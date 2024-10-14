@@ -15,6 +15,7 @@ setup(
         'numpy>=1.15.0',
         'torch>=1.0.0',
         'transformers>=4.0.0',
+        'pandas>=1.4.0'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
