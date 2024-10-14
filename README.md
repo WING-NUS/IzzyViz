@@ -250,7 +250,7 @@ visualize_attention(
     layer,
     head,
     question_end=None,
-    top_n=1,
+    top_n=3,
     enlarged_size=1.8,
     gamma=1.5,
     mode='question_context'
