@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.colors import LogNorm, PowerNorm
+from matplotlib.colors import PowerNorm
 
 # Define a function to make special tokens bold
 def bold_special_tokens(label):

@@ -51,7 +51,6 @@ pip install .
 - `matplotlib>=3.0.0`
 - `numpy>=1.15.0`
 - `torch>=1.0.0`
-- `seaborn>=0.9.0`
 - `transformers>=4.0.0`
 
 These dependencies will be installed automatically when you install **IzzyViz** via `pip`.
