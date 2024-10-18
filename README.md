@@ -81,7 +81,8 @@ visualize_attention(
     layer=-1,
     head=0,
     top_n=5,
-    mode='self_attention'
+    mode='self_attention',
+    plot_titles=["Custom Self-Attention Heatmap Title"]
 )
 ```
 
@@ -126,7 +127,7 @@ visualize_attention(
     layer=-1,
     head=5,
     question_end=question_end,
-    top_n=3,
+    top_n=6,
     mode='question_context'
 )
 ```
@@ -138,6 +139,8 @@ visualize_attention(
 - A -> B (Question attending to Context)
 - B -> A (Context attending to Question)
 - All -> All (All tokens attending to all tokens)
+
+[View the PDF](images/QC_attention_heatmaps.pdf)
 
 ### Self-Attention Mode
 
@@ -177,7 +180,7 @@ visualize_attention(
 
 **Output:** A PDF file named `self_attention_heatmap.pdf`.
 
-![self_attention_heatmap.pdf](images/self_attention_heatmap.pdf)
+![self-attention-example.jpg](images/self-attention_example.jpg)
 
 ### Translation Mode
 
@@ -223,14 +226,16 @@ visualize_attention(
     attentions,
     tokens,
     layer=-1,
-    head=0,
+    head=5,
     question_end=question_end,
-    top_n=5,
+    top_n=4,
     mode='translation'
 )
 ```
 
 **Output:** A PDF file named `translation_attention_heatmap.pdf`.
+
+![translation_example.jpg](images/translation_example.jpg)
 
 **Note:** For translation models, you need to access cross-attention weights between the encoder and decoder.
 
@@ -250,7 +255,8 @@ visualize_attention(
     top_n=3,
     enlarged_size=1.8,
     gamma=1.5,
-    mode='question_context'
+    mode='self_attention',
+    plot_titles=None
 )
 ```
 
@@ -261,10 +267,14 @@ visualize_attention(
 - `layer`: Index of the layer to visualize (e.g., `-1` for the last layer). No default value.
 - `head`: Index of the attention head to visualize. No default value.
 - `question_end`: Index where the first sentence ends in the token list (required for `question_context` and `translation` modes). Default value is `None`.
-- `top_n`: Number of top attention scores to highlight. Default value is `3`. If there is a tie in the attention scores, all attention score cells will be highlighted and enlarged.
+- `top_n`: Number of top attention scores to highlight. Default value is `3`. If there is a tie in the attention scores, all attention score cells will be highlighted and enlarged. The attention scores displayed in the center of the enlarged cells are rounded to two decimal places.
 - `enlarged_size`: Factor by which to enlarge the top cells. Default value is `1.8`.
 - `gamma`: Gamma value for the power normalization of the colormap. Default value is `1.5`.
 - `mode`: Visualization mode (`'question_context'`, `'self_attention'`, or `'translation'`). Default mode is `self_attention`.
+- `plot_titles`: List of custom titles for the subplots. The required number of titles depends on the mode:
+  - **_Question-Context Mode_**: List of 5 titles.
+  - **_Self-Attention Mode_**: List with 1 title.
+  - **_Translation Mode_**: List with 1 title.
 
 **Description:**
 
