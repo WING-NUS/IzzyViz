@@ -6,6 +6,8 @@ import numpy as np
 import torch
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import PowerNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 # Define a function to make special tokens bold
 def bold_special_tokens(label):
@@ -40,15 +42,20 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
         norm = plt.Normalize(vmin=vmin, vmax=vmax)
     # norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
 
+    # Create a custom colormap
+    cmap = plt.get_cmap('Blues')
+
+    # Create the heatmap
     heatmap(
         data,
         xticklabels=x_labels,
         yticklabels=y_labels,
-        cmap='Blues',
+        cmap=cmap,
         linewidths=1,
         linecolor='white',
-        square=True,  # Allow variable cell sizes
-        cbar_kws={"shrink": 1.0},
+        square=True,  # Ensure non-highlighted cells are square
+        # cbar_kws={"shrink": 1.0},
+        cbar=False,  # Disable the default colorbar
         vmin=vmin,
         vmax=vmax,
         norm=norm,
@@ -60,25 +67,42 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     )
 
     # Adjust colorbar ticks
-    cbar = ax.collections[0].colorbar  # Get the colorbar
+    # cbar = ax.collections[0].colorbar  # Get the colorbar
 
     # Define the data values for ticks (evenly spaced)
     num_ticks = 7 # Adjust the number of ticks as needed
     tick_values = np.linspace(vmin, vmax, num_ticks)
 
     # Compute the positions along the colorbar where ticks should be placed
-    normalized_positions = (tick_values - vmin) / (vmax - vmin)
+    # normalized_positions = (tick_values - vmin) / (vmax - vmin)
     
-    adjusted_positions = normalized_positions ** gamma
+    # adjusted_positions = normalized_positions ** gamma
 
     # Map adjusted positions back to data values
-    adjusted_tick_values = vmin + adjusted_positions * (vmax - vmin)
+    # adjusted_tick_values = vmin + adjusted_positions * (vmax - vmin)
 
     # Set the ticks and labels on the colorbar
-    cbar.set_ticks(adjusted_tick_values)
+    # cbar.set_ticks(tick_values)
 
     # normalized_positions = norm(tick_values)
     # cbar.set_ticks(normalized_positions)
+    # cbar.set_ticklabels([f"{v:.2f}" for v in tick_values])
+
+    # Create a new axis for the colorbar that matches the heatmap's height
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+
+    # Add the colorbar
+    im = ax.collections[0]
+    cbar = plt.colorbar(im, cax=cax)
+
+    # Remove the black border around the colorbar
+    cbar.outline.set_visible(False)
+
+    # Adjust colorbar ticks
+    num_ticks = 7  # Adjust the number of ticks as needed
+    tick_values = np.linspace(vmin, vmax, num_ticks)
+    cbar.set_ticks(tick_values)
     cbar.set_ticklabels([f"{v:.2f}" for v in tick_values])
 
     ax.xaxis.set_label_position('top')
@@ -104,7 +128,7 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     # Adjust x tick labels
     for idx, label in enumerate(x_ticklabels):
         if idx in x_indices:
-            label.set_bbox(dict(facecolor='pink', edgecolor='lightpink', boxstyle='round,pad=0.2', alpha=0.5))
+            label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
 
     # Adjust y tick labels without inversion
     for row_index in y_indices:
@@ -114,7 +138,7 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
 
 
 
-def visualize_attention(attentions, tokens, layer, head, question_end=None, top_n=3, enlarged_size=1.8, gamma=1.5, mode='question_context'):
+def visualize_attention(attentions, tokens, layer, head, question_end=None, top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention', plot_titles=None):
     """
     Visualizes attention matrices and saves them to a PDF.
 
@@ -123,9 +147,12 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
     - tokens: List of token labels to display on the heatmaps.
     - layer: The layer number of the attention to visualize.
     - head: The head number of the attention to visualize.
-    - question_end: The index where the first sentence ends in the token list (used in question-context mode).
+    - question_end: The index where the first sentence ends in the token list (used in question-context and translation modes).
     - top_n: The number of top attention scores to highlight.
+    - enlarged_size: Factor by which to enlarge the top cells.
+    - gamma: Gamma value for the power normalization of the colormap.
     - mode: The mode of visualization ('question_context', 'self_attention', 'translation').
+    - plot_titles: List of titles for the subplots. If None, default titles are used.
     """
     attn = attentions[layer].squeeze(0)[head]
 
@@ -146,7 +173,6 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
         data_list = [mat.detach().cpu().numpy() for mat in attention_matrices]
         global_vmin = min(data.min() for data in data_list)
         global_vmax = max(data.max() for data in data_list)
-        print(f"Global min: {global_vmin}, Global max: {global_vmax}")
 
         # Create the normalization
         norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
@@ -159,7 +185,8 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
             [tokens[:], tokens[:]]                           # All->All
         ]
 
-        titles = [
+        # Default titles
+        default_titles = [
             "A -> A (Question attending to Question)",
             "B -> B (Context attending to Context)",
             "A -> B (Question attending to Context)",
@@ -167,46 +194,27 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
             "All -> All (All tokens attending to all tokens)"
         ]
 
-        for i, (att_matrix, title) in enumerate(zip(attention_matrices, titles)):
+        if plot_titles is None:
+            plot_titles = default_titles
+        elif len(plot_titles) != 5:
+            raise ValueError("plot_titles must be a list of 5 titles for question_context mode.")
+
+        for i, (att_matrix, title) in enumerate(zip(attention_matrices, plot_titles)):
             x_labels = [bold_special_tokens(token) for token in token_segment_pairs[i][0]]
             y_labels = [bold_special_tokens(token) for token in token_segment_pairs[i][1]]
-            
+
             data = att_matrix.detach().cpu().numpy()
-            # Ensure data has positive values for LogNorm
+            # Ensure data has positive values for PowerNorm
             data_min_nonzero = data[data > 0].min() if np.any(data > 0) else 1e-6
             data[data <= 0] = data_min_nonzero / 10  # Avoid zeros or negative values
 
-            # # Find the indices of the top_n attention scores
-            # flat_data = data.flatten()
-            # # Get indices of the top_n values
-            # top_n_indices = np.argpartition(flat_data, -top_n)[-top_n:]
-            # top_n_indices_sorted = top_n_indices[np.argsort(-flat_data[top_n_indices])]  # Sort in descending order
-            # # Convert flat indices to row and column indices
-            # top_cells = [np.unravel_index(idx, data.shape) for idx in top_n_indices_sorted]
-
-            # Flatten the data
-            flat_data = data.flatten()
-
-            # Find the threshold value (n-th highest value)
-            threshold = np.partition(flat_data, -top_n)[-top_n]
-            # print(f"Threshold: {threshold}")
-
-            # Get all indices where values are greater than or equal to the threshold
-            top_indices = np.where(flat_data >= threshold)[0]
-
-            # Sort these indices by value in descending order
-            top_indices_sorted = top_indices[np.argsort(-flat_data[top_indices])]
-
-            # Convert flat indices to row and column indices
-            top_cells = [np.unravel_index(idx, data.shape) for idx in top_indices_sorted]
-            
-            # Define default widths and heights
-            default_width = 1
-            default_height = 1
-
-            num_rows, num_cols = data.shape
+            # Find top attention cells
+            top_cells = find_top_cells(data, top_n)
 
             # Initialize column widths and row heights
+            num_rows, num_cols = data.shape
+            default_width = 1
+            default_height = 1
             column_widths = [default_width] * num_cols
             row_heights = [default_height] * num_rows
 
@@ -236,16 +244,20 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
         plt.close(fig)
         print("Attention heatmaps saved to QC_attention_heatmaps.pdf")
 
-    
     elif mode == 'self_attention':
         # Self-Attention Mode
         # Only one plot: tokens attending to themselves
+        if plot_titles is None:
+            plot_titles = ["Self-Attention Heatmap"]
+        elif not isinstance(plot_titles, list) or len(plot_titles) != 1:
+            raise ValueError("plot_titles must be a list with one title for self_attention mode.")
+
         fig, ax = plt.subplots(figsize=(10, 10))
 
         attention_matrix = attn  # Shape: (seq_len, seq_len)
         x_labels = [bold_special_tokens(token) for token in tokens]
         y_labels = [bold_special_tokens(token) for token in tokens]
-        title = "Self-Attention Heatmap"
+        title = plot_titles[0]
 
         # Prepare data
         data = attention_matrix.detach().cpu().numpy()
@@ -294,11 +306,15 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
     elif mode == 'translation':
         # Translation Mode
         # One plot: Source tokens (input sentence) vs. Target tokens (output sentence)
-        fig, ax = plt.subplots(figsize=(10, 10))
-
-        # Assume tokens are concatenated: source_tokens + target_tokens
         if question_end is None:
             raise ValueError("question_end must be provided for translation mode.")
+
+        if plot_titles is None:
+            plot_titles = ["Translation Attention Heatmap"]
+        elif not isinstance(plot_titles, list) or len(plot_titles) != 1:
+            raise ValueError("plot_titles must be a list with one title for translation mode.")
+
+        fig, ax = plt.subplots(figsize=(10, 10))
 
         source_tokens = tokens[:question_end]
         target_tokens = tokens[question_end:]
@@ -306,7 +322,7 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
         attention_matrix = attn[:question_end, question_end:]  # Shape: (source_seq_len, target_seq_len)
         x_labels = [bold_special_tokens(token) for token in target_tokens]
         y_labels = [bold_special_tokens(token) for token in source_tokens]
-        title = "Translation Attention Heatmap"
+        title = plot_titles[0]
 
         # Prepare data
         data = attention_matrix.detach().cpu().numpy()
@@ -354,7 +370,6 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
 
     else:
         raise ValueError("Invalid mode. Choose from 'question_context', 'self_attention', or 'translation'.")
-
 
 # Helper function to find top attention cells
 def find_top_cells(data, top_n):

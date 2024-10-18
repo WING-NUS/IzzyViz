@@ -32,12 +32,6 @@
 You can install **IzzyViz** via `pip`:
 
 ```bash
-pip install IzzyViz
-```
-
-Alternatively, you can install it directly from the source:
-
-```bash
 git clone https://github.com/lxz333/IzzyViz.git
 cd IzzyViz
 pip install .
@@ -49,9 +43,11 @@ pip install .
 
 - Python 3.6 or higher
 - `matplotlib>=3.0.0`
-- `numpy>=1.15.0`
+- `numpy>=1.15.0,<2.0.0`
 - `torch>=1.0.0`
 - `transformers>=4.0.0`
+- `pandas>=1.4.0`
+- `pybind11>=2.12`
 
 These dependencies will be installed automatically when you install **IzzyViz** via `pip`.
 
@@ -135,7 +131,7 @@ visualize_attention(
 )
 ```
 
-**Output:** A PDF file named `attention_heatmaps.pdf` containing five subplots:
+**Output:** A PDF file named `QC_attention_heatmaps.pdf` containing five subplots:
 
 - A -> A (Question attending to Question)
 - B -> B (Context attending to Context)
@@ -173,13 +169,15 @@ visualize_attention(
     attentions,
     tokens,
     layer=-1,
-    head=0,
+    head=8,
     top_n=5,
     mode='self_attention'
 )
 ```
 
 **Output:** A PDF file named `self_attention_heatmap.pdf`.
+
+![self_attention_heatmap.pdf](images/self_attention_heatmap.pdf)
 
 ### Translation Mode
 
@@ -258,15 +256,15 @@ visualize_attention(
 
 **Parameters:**
 
-- `attentions`: List of attention tensors from the model.
-- `tokens`: List of token strings corresponding to the input IDs.
-- `layer`: Index of the layer to visualize (e.g., `-1` for the last layer).
-- `head`: Index of the attention head to visualize.
-- `question_end`: Index where the first sentence ends in the token list (required for `question_context` and `translation` modes).
-- `top_n`: Number of top attention scores to highlight.
-- `enlarged_size`: Factor by which to enlarge the top cells.
-- `gamma`: Gamma value for the power normalization of the colormap.
-- `mode`: Visualization mode (`'question_context'`, `'self_attention'`, or `'translation'`).
+- `attentions`: List of attention tensors from the model. No default value.
+- `tokens`: List of token strings corresponding to the input IDs. No default value.
+- `layer`: Index of the layer to visualize (e.g., `-1` for the last layer). No default value.
+- `head`: Index of the attention head to visualize. No default value.
+- `question_end`: Index where the first sentence ends in the token list (required for `question_context` and `translation` modes). Default value is `None`.
+- `top_n`: Number of top attention scores to highlight. Default value is `3`. If there is a tie in the attention scores, all attention score cells will be highlighted and enlarged.
+- `enlarged_size`: Factor by which to enlarge the top cells. Default value is `1.8`.
+- `gamma`: Gamma value for the power normalization of the colormap. Default value is `1.5`.
+- `mode`: Visualization mode (`'question_context'`, `'self_attention'`, or `'translation'`). Default mode is `self_attention`.
 
 **Description:**
 

@@ -358,8 +358,6 @@ class _HeatMapper:
     
     def _determine_cmap_params(self, plot_data, vmin, vmax,
                                cmap, center, robust):
-        # Method code remains the same
-        # ... [Include your existing method code here] ...
         """Use some heuristics to set good defaults for colorbar and range."""
 
         # plot_data is a np.ma.array instance
