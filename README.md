@@ -272,9 +272,9 @@ visualize_attention(
 - `gamma`: Gamma value for the power normalization of the colormap. Default value is `1.5`.
 - `mode`: Visualization mode (`'question_context'`, `'self_attention'`, or `'translation'`). Default mode is `self_attention`.
 - `plot_titles`: List of custom titles for the subplots. The required number of titles depends on the mode:
-  - **_Question-Context Mode_**: List of 5 titles.
-  - **_Self-Attention Mode_**: List with 1 title.
-  - **_Translation Mode_**: List with 1 title.
+  - **Question-Context Mode**: List of 5 titles.
+  - **Self-Attention Mode**: List with 1 title.
+  - **Translation Mode**: List with 1 title.
 
 **Description:**
 
