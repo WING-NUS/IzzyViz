@@ -24,6 +24,7 @@
   - **Self-Attention Mode**: Visualizes self-attention within a single sentence.
   - **Translation Mode**: Visualizes attention between source and target sentences in translation tasks.
 - Highlights top attention scores with enlarged grid cells and annotations.
+- Customizable region highlighting: Draw red boxes around specified regions on the heatmaps to highlight areas of interest.
 - Customizable color mapping and normalization.
 - Generates high-quality heatmaps saved as PDF files.
 
@@ -74,19 +75,26 @@ with torch.no_grad():
     outputs = model(**inputs, output_attentions=True)
     attentions = outputs.attentions
 
+# Specify regions to highlight (e.g., words "fox" to "lazy")
+left_top_cells = [(4, 4)]   # Starting cell (row index, column index)
+right_bottom_cells = [(8, 8)]  # Ending cell (row index, column index)
+
 # Visualize attention
 visualize_attention(
     attentions,
     tokens,
     layer=-1,
-    head=0,
+    head=8,
     top_n=5,
     mode='self_attention',
+    left_top_cells=left_top_cells,
+    right_bottom_cells=right_bottom_cells,
     plot_titles=["Custom Self-Attention Heatmap Title"]
 )
 ```
 
 This will generate a heatmap PDF file named `self_attention_heatmap.pdf`.
+![quick_start.jpg](images/quick_start.jpg)
 
 ## Usage Examples
 
@@ -256,7 +264,9 @@ visualize_attention(
     enlarged_size=1.8,
     gamma=1.5,
     mode='self_attention',
-    plot_titles=None
+    plot_titles=None,
+    left_top_cells=None,
+    right_bottom_cells=None,
 )
 ```
 
@@ -275,10 +285,28 @@ visualize_attention(
   - **_Question-Context Mode_**: List of 5 titles.
   - **_Self-Attention Mode_**: List with 1 title.
   - **_Translation Mode_**: List with 1 title.
+- `left_top_cells`: A list of (row_index, column_index) tuples specifying the top-left cells of regions to highlight with red boxes. Both row_index and column_index are 0-based and must be within the range 0 to the total number of rows/columns minus 1. Default is None.
+- `right_bottom_cells`: A list of (row_index, column_index) tuples specifying the bottom_right cells of regions to highlight with red boxes. Both row_index and column_index are 0-based and must be within the range 0 to the total number of rows/columns minus 1. Each tuple in `right_bottom_cells` corresponds to a tuple in `left_top_cells`. Default is None.
 
 **Description:**
 
-Generates attention heatmaps based on the specified mode and parameters. The heatmaps are saved as PDF files in the current directory.
+Generates attention heatmaps based on the specified mode and parameters. Allows users to highlight specific regions by drawing red boxes around them. The heatmaps are saved as PDF files in the current directory.
+
+**Specifying Regions to Highlight**:
+
+- The heatmap grid uses zero-based indexing.
+- Row indices (row_index) increase from top to bottom.
+- Column indices (column_index) increase from left to right.
+- Indices must be within the dimensions of the attention matrix.
+
+**Example**
+
+To highlight a region from row 1 to row 3 and column 2 to column 4:
+
+```python
+left_top_cells = [(1, 2)]
+right_bottom_cells = [(3, 4)]
+```
 
 ## Contributing
 
