@@ -544,6 +544,9 @@ class _HeatMapper:
             row_positions = np.arange(nrows + 1)
     
         X, Y = np.meshgrid(col_positions, row_positions)
+
+        self.col_positions = col_positions
+        self.row_positions = row_positions
     
         # Draw the heatmap
         mesh = ax.pcolormesh(X, Y, self.plot_data, cmap=self.cmap, norm=self.norm, **kws)
@@ -622,10 +625,10 @@ def heatmap(
     kwargs["linewidths"] = linewidths
     kwargs["edgecolor"] = linecolor
     
-    # Draw the plot and return the Axes
+    # Draw the plot and return the Axes and the plotter
     if ax is None:
         ax = plt.gca()
     if square:
         ax.set_aspect("equal")
     plotter.plot(ax, cbar_ax, kwargs)
-    return ax
+    return ax, plotter  # Return both ax and plotter

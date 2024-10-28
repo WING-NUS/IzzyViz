@@ -7,6 +7,7 @@ import torch
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import PowerNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib import patches  # Import patches to draw the rectangle
 
 
 # Define a function to make special tokens bold
@@ -17,12 +18,14 @@ def bold_special_tokens(label):
     return label
 
 def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel, ylabel, ax,
-                             column_widths=None, row_heights=None, top_cells=None, vmin=None, vmax=None, norm=None, gamma=2.0):
+                             column_widths=None, row_heights=None, top_cells=None, vmin=None,
+                             vmax=None, norm=None, gamma=2.0, left_top_cells=None, right_bottom_cells=None):
     """
     Creates a heatmap with variable cell sizes and annotations for top cells.
     """
 
     data = attention_matrix.detach().cpu().numpy()
+    # print("data: ", data.shape)
 
     # Create annot_data for annotations
     annot_data = np.empty_like(data, dtype=object)
@@ -31,7 +34,7 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     if top_cells is not None:
         for (row_index, col_index) in top_cells:
             value = data[row_index, col_index]
-            annot_data[row_index, col_index] = f"{value:.2f}"
+            annot_data[row_index, col_index] = f"{value:.3f}"
 
     if vmin is None:
         vmin = data.min()
@@ -46,7 +49,7 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     cmap = plt.get_cmap('Blues')
 
     # Create the heatmap
-    heatmap(
+    ax, plotter = heatmap(
         data,
         xticklabels=x_labels,
         yticklabels=y_labels,
@@ -135,10 +138,61 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
         if row_index < len(y_ticklabels):
             label = y_ticklabels[row_index]
             label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+    
+    # Draw red rectangles around the specified regions
+    if left_top_cells is not None and right_bottom_cells is not None:
+        if len(left_top_cells) != len(right_bottom_cells):
+            raise ValueError("left_top_cells and right_bottom_cells must have the same length.")
+
+        for lt_cell, rb_cell in zip(left_top_cells, right_bottom_cells):
+            lt_row, lt_col = lt_cell
+            rb_row, rb_col = rb_cell
+
+            if lt_row > rb_row or lt_col > rb_col:
+                raise ValueError("Invalid cell coordinates. Left-top cell must be above and to the left of the right-bottom cell.")
+            
+            if (lt_row < 0 or 
+                lt_col < 0 or 
+                rb_row < 0 or 
+                rb_col < 0 or
+                rb_row >= data.shape[0] or 
+                rb_col >= data.shape[1] or
+                lt_row >= data.shape[0] or
+                lt_col >= data.shape[1]):
+                raise ValueError("Invalid cell coordinates. Coordinates must be within the attention matrix.")
+
+            # Get the positions of the cell edges
+            col_positions = plotter.col_positions
+            row_positions = plotter.row_positions
+
+            # Compute the rectangle's position and size
+            x = col_positions[lt_col]
+            # print("col_positions: ", col_positions)
+            # print("x: ", x)
+            width = col_positions[rb_col + 1] - col_positions[lt_col]
+            # print("width: ", width)
+            y = row_positions[lt_row]
+            # print("row_positions: ", row_positions)
+            # print("y: ", y)
+            height = row_positions[rb_row + 1] - row_positions[lt_row]
+            # print("height: ", height)
+
+            # Draw the rectangle
+            rect = patches.Rectangle(
+                (x, y),
+                width,
+                height,
+                linewidth=2,
+                edgecolor='red',
+                facecolor='none'
+            )
+            ax.add_patch(rect)
 
 
 
-def visualize_attention(attentions, tokens, layer, head, question_end=None, top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention', plot_titles=None):
+def visualize_attention(attentions, tokens, layer, head, question_end=None,
+                        top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
+                        plot_titles=None, left_top_cells=None, right_bottom_cells=None):
     """
     Visualizes attention matrices and saves them to a PDF.
 
@@ -153,6 +207,8 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
     - gamma: Gamma value for the power normalization of the colormap.
     - mode: The mode of visualization ('question_context', 'self_attention', 'translation').
     - plot_titles: List of titles for the subplots. If None, default titles are used.
+    - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
+    - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
     """
     attn = attentions[layer].squeeze(0)[head]
 
@@ -236,7 +292,9 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
                 vmin=global_vmin,
                 vmax=global_vmax,
                 norm=norm,
-                gamma=gamma
+                gamma=gamma,
+                left_top_cells=left_top_cells,
+                right_bottom_cells=right_bottom_cells
             )
 
         plt.tight_layout()
@@ -295,7 +353,9 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
             vmin=global_vmin,
             vmax=global_vmax,
             norm=norm,
-            gamma=gamma
+            gamma=gamma,
+            left_top_cells=left_top_cells,
+            right_bottom_cells=right_bottom_cells
         )
 
         plt.tight_layout()
@@ -360,7 +420,9 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None, top_
             vmin=global_vmin,
             vmax=global_vmax,
             norm=norm,
-            gamma=gamma
+            gamma=gamma,
+            left_top_cells=left_top_cells,
+            right_bottom_cells=right_bottom_cells
         )
 
         plt.tight_layout()
