@@ -24,7 +24,11 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     Creates a heatmap with variable cell sizes and annotations for top cells.
     """
 
-    data = attention_matrix.detach().cpu().numpy()
+    if isinstance(attention_matrix, np.ndarray):
+        data = attention_matrix  # It's already a NumPy array, no need to convert
+    else:
+        data = attention_matrix.detach().cpu().numpy()  # Convert PyTorch tensor to NumPy
+
     # print("data: ", data.shape)
 
     # Create annot_data for annotations
@@ -190,22 +194,22 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
 
 
 
-def visualize_attention(attentions, tokens, layer, head, question_end=None,
-                        top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
-                        plot_titles=None, left_top_cells=None, right_bottom_cells=None):
+def visualize_attention_encoder_only(attentions, tokens, layer, head, question_end=None,
+                                     top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
+                                     plot_titles=None, left_top_cells=None, right_bottom_cells=None):
     """
-    Visualizes attention matrices and saves them to a PDF.
+    Visualizes attention matrices for encoder-only models.
 
     Parameters:
     - attentions: List of attention matrices from the model.
     - tokens: List of token labels to display on the heatmaps.
     - layer: The layer number of the attention to visualize.
     - head: The head number of the attention to visualize.
-    - question_end: The index where the first sentence ends in the token list (used in question-context and translation modes).
+    - question_end: The index where the first sentence ends in the token list (used in question-context modes).
     - top_n: The number of top attention scores to highlight.
     - enlarged_size: Factor by which to enlarge the top cells.
     - gamma: Gamma value for the power normalization of the colormap.
-    - mode: The mode of visualization ('question_context', 'self_attention', 'translation').
+    - mode: The mode of visualization ('self_attention' or 'question_context').
     - plot_titles: List of titles for the subplots. If None, default titles are used.
     - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
     - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
@@ -220,8 +224,8 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None,
         attention_matrices = [
             attn[:question_end, :question_end],  # A->A
             attn[question_end:, question_end:],  # B->B
-            attn[:question_end, question_end:],  # A->B
             attn[question_end:, :question_end],  # B->A
+            attn[:question_end, question_end:],  # A->B
             attn                                 # All->All
         ]
 
@@ -236,8 +240,8 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None,
         token_segment_pairs = [
             [tokens[:question_end], tokens[:question_end]],  # A->A
             [tokens[question_end:], tokens[question_end:]],  # B->B
-            [tokens[question_end:], tokens[:question_end]],  # A->B
-            [tokens[:question_end], tokens[question_end:]],  # B->A
+            [tokens[question_end:], tokens[:question_end]],  # B->A
+            [tokens[:question_end], tokens[question_end:]],  # A->B
             [tokens[:], tokens[:]]                           # All->All
         ]
 
@@ -245,8 +249,8 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None,
         default_titles = [
             "A -> A (Question attending to Question)",
             "B -> B (Context attending to Context)",
-            "A -> B (Question attending to Context)",
             "B -> A (Context attending to Question)",
+            "A -> B (Question attending to Context)",
             "All -> All (All tokens attending to all tokens)"
         ]
 
@@ -363,26 +367,43 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None,
         plt.close(fig)
         print("Self-attention heatmap saved to self_attention_heatmap.pdf")
 
-    elif mode == 'translation':
-        # Translation Mode
-        # One plot: Source tokens (input sentence) vs. Target tokens (output sentence)
-        if question_end is None:
-            raise ValueError("question_end must be provided for translation mode.")
+    else:
+        raise ValueError("Invalid mode for encoder-only visualization. Choose from 'question_context' or 'self_attention'.")
 
-        if plot_titles is None:
-            plot_titles = ["Translation Attention Heatmap"]
-        elif not isinstance(plot_titles, list) or len(plot_titles) != 1:
-            raise ValueError("plot_titles must be a list with one title for translation mode.")
+def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens, layer, head,
+                                     top_n=3, enlarged_size=1.8, gamma=1.5,
+                                     plot_titles=None, left_top_cells=None, right_bottom_cells=None,
+                                     use_case='full_sequence'):
+    """
+    Visualizes attention matrices for decoder-only models.
 
-        fig, ax = plt.subplots(figsize=(10, 10))
+    Parameters:
+    - attentions: List of attention matrices from the model.
+    - source_tokens: List of source token labels.
+    - generated_tokens: List of generated token labels.
+    - layer: The layer number of the attention to visualize.
+    - head: The head number of the attention to visualize.
+    - top_n: The number of top attention scores to highlight.
+    - enlarged_size: Factor by which to enlarge the top cells.
+    - gamma: Gamma value for the power normalization of the colormap.
+    - plot_titles: List of titles for the subplots. If None, default titles are used.
+    - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
+    - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
+    - use_case: The specific use case to visualize. Options are:
+        - 'full_sequence': Input sequence attending to itself (no token generation).
+        - 'self_attention_source': Self-Attention for Source Tokens (no causal masking).
+        - 'generated_to_source': Generated-to-Source Attention (fully connected).
+        - 'self_attention_generated': Self-Attention for Generated Tokens (causal-masked).
+    """
+    attn = attentions[layer].squeeze(0)[head]
 
-        source_tokens = tokens[:question_end]
-        target_tokens = tokens[question_end:]
-
-        attention_matrix = attn[:question_end, question_end:]  # Shape: (source_seq_len, target_seq_len)
-        x_labels = [bold_special_tokens(token) for token in target_tokens]
-        y_labels = [bold_special_tokens(token) for token in source_tokens]
-        title = plot_titles[0]
+    if use_case == 'full_sequence':
+        # Input sequence attending to itself. The x, y labels are the same sentence.
+        tokens = source_tokens
+        attention_matrix = attn  # Shape: (seq_len, seq_len)
+        x_labels = [bold_special_tokens(token) for token in tokens]
+        y_labels = [bold_special_tokens(token) for token in tokens]
+        title = plot_titles[0] if plot_titles else "Self-Attention Heatmap (Full Sequence)"
 
         # Prepare data
         data = attention_matrix.detach().cpu().numpy()
@@ -405,14 +426,14 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None,
             column_widths[col_index] = enlarged_size
             row_heights[row_index] = enlarged_size
 
-        # Create heatmap
+        fig, ax = plt.subplots(figsize=(10, 10))
         create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
             title,
-            "Target Tokens",
-            "Source Tokens",
+            "Tokens Attended to",
+            "Tokens Attending",
             ax,
             column_widths=column_widths,
             row_heights=row_heights,
@@ -426,12 +447,284 @@ def visualize_attention(attentions, tokens, layer, head, question_end=None,
         )
 
         plt.tight_layout()
-        plt.savefig("translation_attention_heatmap.pdf")
+        plt.savefig("decoder_self_attention_heatmap.pdf")
         plt.close(fig)
-        print("Translation attention heatmap saved to translation_attention_heatmap.pdf")
+        print("Decoder self-attention heatmap saved to decoder_self_attention_heatmap.pdf")
+
+    elif use_case == 'self_attention_source':
+        # Self-Attention for Source Tokens (no causal masking)
+        tokens = source_tokens
+        seq_len = len(source_tokens)
+        attention_matrix = attn[:seq_len, :seq_len]
+        x_labels = [bold_special_tokens(token) for token in tokens]
+        y_labels = [bold_special_tokens(token) for token in tokens]
+        title = plot_titles[0] if plot_titles else "Self-Attention Heatmap (Source Tokens)"
+
+        # Prepare data
+        data = attention_matrix.detach().cpu().numpy()
+        global_vmin = data.min()
+        global_vmax = data.max()
+        norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
+
+        # Find top attention cells
+        top_cells = find_top_cells(data, top_n)
+
+        # Initialize column widths and row heights
+        num_rows, num_cols = data.shape
+        default_width = 1
+        default_height = 1
+        column_widths = [default_width] * num_cols
+        row_heights = [default_height] * num_rows
+
+        # Enlarge top cells
+        for (row_index, col_index) in top_cells:
+            column_widths[col_index] = enlarged_size
+            row_heights[row_index] = enlarged_size
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        create_tablelens_heatmap(
+            attention_matrix,
+            x_labels,
+            y_labels,
+            title,
+            "Tokens Attended to",
+            "Tokens Attending",
+            ax,
+            column_widths=column_widths,
+            row_heights=row_heights,
+            top_cells=top_cells,
+            vmin=global_vmin,
+            vmax=global_vmax,
+            norm=norm,
+            gamma=gamma,
+            left_top_cells=left_top_cells,
+            right_bottom_cells=right_bottom_cells
+        )
+
+        plt.tight_layout()
+        plt.savefig("decoder_self_attention_source_tokens_heatmap.pdf")
+        plt.close(fig)
+        print("Decoder self-attention heatmap for source tokens saved to decoder_self_attention_source_tokens_heatmap.pdf")
+
+    elif use_case == 'generated_to_source':
+        # Generated-to-Source Attention (fully connected)
+        source_seq_len = len(source_tokens)
+        generated_seq_len = len(generated_tokens)
+        attention_matrix = attn[source_seq_len:source_seq_len+generated_seq_len, :source_seq_len]
+        x_labels = [bold_special_tokens(token) for token in source_tokens]
+        y_labels = [bold_special_tokens(token) for token in generated_tokens]
+        title = plot_titles[0] if plot_titles else "Generated Tokens attending to Source Tokens"
+
+        # Prepare data
+        data = attention_matrix.detach().cpu().numpy()
+        global_vmin = data.min()
+        global_vmax = data.max()
+        norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
+
+        # Find top attention cells
+        top_cells = find_top_cells(data, top_n)
+
+        # Initialize column widths and row heights
+        num_rows, num_cols = data.shape
+        default_width = 1
+        default_height = 1
+        column_widths = [default_width] * num_cols
+        row_heights = [default_height] * num_rows
+
+        # Enlarge top cells
+        for (row_index, col_index) in top_cells:
+            column_widths[col_index] = enlarged_size
+            row_heights[row_index] = enlarged_size
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        create_tablelens_heatmap(
+            attention_matrix,
+            x_labels,
+            y_labels,
+            title,
+            "Source Tokens",
+            "Generated Tokens",
+            ax,
+            column_widths=column_widths,
+            row_heights=row_heights,
+            top_cells=top_cells,
+            vmin=global_vmin,
+            vmax=global_vmax,
+            norm=norm,
+            gamma=gamma,
+            left_top_cells=left_top_cells,
+            right_bottom_cells=right_bottom_cells
+        )
+
+        plt.tight_layout()
+        plt.savefig("decoder_generated_to_source_attention_heatmap.pdf")
+        plt.close(fig)
+        print("Decoder generated-to-source attention heatmap saved to decoder_generated_to_source_attention_heatmap.pdf")
+
+    elif use_case == 'self_attention_generated':
+        # Self-Attention for Generated Tokens (causal-masked)
+        source_seq_len = len(source_tokens)
+        generated_seq_len = len(generated_tokens)
+        total_seq_len = source_seq_len + generated_seq_len
+        attention_matrix = attn[source_seq_len:total_seq_len, source_seq_len:total_seq_len]
+        x_labels = [bold_special_tokens(token) for token in generated_tokens]
+        y_labels = [bold_special_tokens(token) for token in generated_tokens]
+        title = plot_titles[0] if plot_titles else "Self-Attention Heatmap (Generated Tokens)"
+
+        # Prepare data
+        data = attention_matrix.detach().cpu().numpy()
+        global_vmin = data.min()
+        global_vmax = data.max()
+        norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
+
+        # Find top attention cells
+        top_cells = find_top_cells(data, top_n)
+
+        # Initialize column widths and row heights
+        num_rows, num_cols = data.shape
+        default_width = 1
+        default_height = 1
+        column_widths = [default_width] * num_cols
+        row_heights = [default_height] * num_rows
+
+        # Enlarge top cells
+        for (row_index, col_index) in top_cells:
+            column_widths[col_index] = enlarged_size
+            row_heights[row_index] = enlarged_size
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        create_tablelens_heatmap(
+            attention_matrix,
+            x_labels,
+            y_labels,
+            title,
+            "Tokens Attended to",
+            "Tokens Attending",
+            ax,
+            column_widths=column_widths,
+            row_heights=row_heights,
+            top_cells=top_cells,
+            vmin=global_vmin,
+            vmax=global_vmax,
+            norm=norm,
+            gamma=gamma,
+            left_top_cells=left_top_cells,
+            right_bottom_cells=right_bottom_cells
+        )
+
+        plt.tight_layout()
+        plt.savefig("decoder_self_attention_generated_tokens_heatmap.pdf")
+        plt.close(fig)
+        print("Decoder self-attention heatmap for generated tokens saved to decoder_self_attention_generated_tokens_heatmap.pdf")
 
     else:
-        raise ValueError("Invalid mode. Choose from 'question_context', 'self_attention', or 'translation'.")
+        raise ValueError("Invalid use_case for decoder-only visualization. Choose from 'full_sequence', 'self_attention_source', 'generated_to_source', or 'self_attention_generated'.")
+
+def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generated_tokens,
+                                        top_n=3, enlarged_size=1.8, gamma=1.5,
+                                        plot_title=None, left_top_cells=None, right_bottom_cells=None,
+                                        save_path="cross_attention_heatmap.pdf", use_case='cross_attention'):
+    """
+    Visualizes attention matrices for encoder-decoder models.
+
+    Parameters:
+    - attention_matrix: The attention matrix (numpy array or torch tensor).
+    - source_tokens: List of source token labels.
+    - generated_tokens: List of generated token labels.
+    - top_n: The number of top attention scores to highlight.
+    - enlarged_size: Factor by which to enlarge the top cells.
+    - gamma: Gamma value for the power normalization of the colormap.
+    - plot_title: Title for the plot.
+    - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
+    - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
+    - save_path: File path to save the generated heatmap PDF.
+    - use_case: Type of attention to visualize. Options are 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.
+    """
+
+    # Prepare data
+    data = attention_matrix
+    if isinstance(data, torch.Tensor):
+        data = data.detach().cpu().numpy()
+
+    if use_case == 'cross_attention':
+        # Cross-Attention: Decoder attending to Encoder outputs
+        x_labels = [bold_special_tokens(token) for token in source_tokens]
+        y_labels = [bold_special_tokens(token) for token in generated_tokens]
+        xlabel = "Source Tokens"
+        ylabel = "Generated Tokens"
+        default_title = "Cross-Attention Heatmap (Decoder to Encoder)"
+        expected_shape = (len(generated_tokens), len(source_tokens))
+
+    elif use_case == 'encoder_self_attention':
+        # Encoder Self-Attention
+        x_labels = [bold_special_tokens(token) for token in source_tokens]
+        y_labels = [bold_special_tokens(token) for token in source_tokens]
+        xlabel = "Source Tokens"
+        ylabel = "Source Tokens"
+        default_title = "Encoder Self-Attention Heatmap"
+        expected_shape = (len(source_tokens), len(source_tokens))
+
+    elif use_case == 'decoder_self_attention':
+        # Decoder Self-Attention
+        x_labels = [bold_special_tokens(token) for token in generated_tokens]
+        y_labels = [bold_special_tokens(token) for token in generated_tokens]
+        xlabel = "Generated Tokens"
+        ylabel = "Generated Tokens"
+        default_title = "Decoder Self-Attention Heatmap"
+        expected_shape = (len(generated_tokens), len(generated_tokens))
+
+    else:
+        raise ValueError("Invalid use_case. Choose from 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.")
+
+    # Ensure data dimensions match tokens
+    if data.shape != expected_shape:
+        raise ValueError(f"Attention matrix shape {data.shape} does not match the expected shape {expected_shape} for the selected use_case.")
+
+    global_vmin = data.min()
+    global_vmax = data.max()
+    norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
+
+    # Find top attention cells
+    top_cells = find_top_cells(data, top_n)
+
+    # Initialize column widths and row heights
+    num_rows, num_cols = data.shape
+    default_width = 1
+    default_height = 1
+    column_widths = [default_width] * num_cols
+    row_heights = [default_height] * num_rows
+
+    # Enlarge top cells
+    for (row_index, col_index) in top_cells:
+        column_widths[col_index] = enlarged_size
+        row_heights[row_index] = enlarged_size
+
+    title = plot_title if plot_title else default_title
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    create_tablelens_heatmap(
+        attention_matrix,
+        x_labels,
+        y_labels,
+        title,
+        xlabel,
+        ylabel,
+        ax,
+        column_widths=column_widths,
+        row_heights=row_heights,
+        top_cells=top_cells,
+        vmin=global_vmin,
+        vmax=global_vmax,
+        norm=norm,
+        gamma=gamma,
+        left_top_cells=left_top_cells,
+        right_bottom_cells=right_bottom_cells
+    )
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close(fig)
+    print(f"Attention heatmap saved to {save_path}")
 
 # Helper function to find top attention cells
 def find_top_cells(data, top_n):
