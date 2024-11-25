@@ -24,7 +24,11 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     Creates a heatmap with variable cell sizes and annotations for top cells.
     """
 
-    data = attention_matrix.detach().cpu().numpy()
+    if isinstance(attention_matrix, np.ndarray):
+        data = attention_matrix  # It's already a NumPy array, no need to convert
+    else:
+        data = attention_matrix.detach().cpu().numpy()  # Convert PyTorch tensor to NumPy
+
     # print("data: ", data.shape)
 
     # Create annot_data for annotations
@@ -616,61 +620,66 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
     else:
         raise ValueError("Invalid use_case for decoder-only visualization. Choose from 'full_sequence', 'self_attention_source', 'generated_to_source', or 'self_attention_generated'.")
 
-def visualize_attention_encoder_decoder(attentions, source_tokens, generated_tokens, layer, head,
+def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generated_tokens,
                                         top_n=3, enlarged_size=1.8, gamma=1.5,
-                                        plot_titles=None, left_top_cells=None, right_bottom_cells=None,
-                                        use_case='cross_attention'):
+                                        plot_title=None, left_top_cells=None, right_bottom_cells=None,
+                                        save_path="cross_attention_heatmap.pdf", use_case='cross_attention'):
     """
     Visualizes attention matrices for encoder-decoder models.
 
     Parameters:
-    - attentions: Dictionary with keys 'encoder_self', 'decoder_self', 'cross', each containing list of attention matrices.
+    - attention_matrix: The attention matrix (numpy array or torch tensor).
     - source_tokens: List of source token labels.
     - generated_tokens: List of generated token labels.
-    - layer: The layer number of the attention to visualize.
-    - head: The head number of the attention to visualize.
     - top_n: The number of top attention scores to highlight.
     - enlarged_size: Factor by which to enlarge the top cells.
     - gamma: Gamma value for the power normalization of the colormap.
-    - plot_titles: List of titles for the subplots. If None, default titles are used.
+    - plot_title: Title for the plot.
     - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
     - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-    - use_case: The specific use case to visualize. Options are:
-        - 'encoder_self_attention': Encoder Self-Attention.
-        - 'decoder_self_attention': Decoder Self-Attention.
-        - 'cross_attention': Decoder-to-Encoder Cross-Attention.
+    - save_path: File path to save the generated heatmap PDF.
+    - use_case: Type of attention to visualize. Options are 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.
     """
-    if use_case == 'encoder_self_attention':
+
+    # Prepare data
+    data = attention_matrix
+    if isinstance(data, torch.Tensor):
+        data = data.detach().cpu().numpy()
+
+    if use_case == 'cross_attention':
+        # Cross-Attention: Decoder attending to Encoder outputs
+        x_labels = [bold_special_tokens(token) for token in source_tokens]
+        y_labels = [bold_special_tokens(token) for token in generated_tokens]
+        xlabel = "Source Tokens"
+        ylabel = "Generated Tokens"
+        default_title = "Cross-Attention Heatmap (Decoder to Encoder)"
+        expected_shape = (len(generated_tokens), len(source_tokens))
+
+    elif use_case == 'encoder_self_attention':
         # Encoder Self-Attention
-        attn = attentions['encoder_self'][layer].squeeze(0)[head]
-        tokens = source_tokens
-        attention_matrix = attn  # Shape: (source_seq_len, source_seq_len)
-        x_labels = [bold_special_tokens(token) for token in tokens]
-        y_labels = [bold_special_tokens(token) for token in tokens]
-        title = plot_titles[0] if plot_titles else "Encoder Self-Attention Heatmap"
+        x_labels = [bold_special_tokens(token) for token in source_tokens]
+        y_labels = [bold_special_tokens(token) for token in source_tokens]
+        xlabel = "Source Tokens"
+        ylabel = "Source Tokens"
+        default_title = "Encoder Self-Attention Heatmap"
+        expected_shape = (len(source_tokens), len(source_tokens))
 
     elif use_case == 'decoder_self_attention':
         # Decoder Self-Attention
-        attn = attentions['decoder_self'][layer].squeeze(0)[head]
-        tokens = generated_tokens
-        attention_matrix = attn  # Shape: (target_seq_len, target_seq_len)
-        x_labels = [bold_special_tokens(token) for token in tokens]
-        y_labels = [bold_special_tokens(token) for token in tokens]
-        title = plot_titles[0] if plot_titles else "Decoder Self-Attention Heatmap"
-
-    elif use_case == 'cross_attention':
-        # Cross-Attention (Decoder attending to Encoder outputs)
-        attn = attentions['cross'][layer].squeeze(0)[head]
-        attention_matrix = attn  # Shape: (target_seq_len, source_seq_len)
-        x_labels = [bold_special_tokens(token) for token in source_tokens]
+        x_labels = [bold_special_tokens(token) for token in generated_tokens]
         y_labels = [bold_special_tokens(token) for token in generated_tokens]
-        title = plot_titles[0] if plot_titles else "Cross-Attention Heatmap (Decoder to Encoder)"
+        xlabel = "Generated Tokens"
+        ylabel = "Generated Tokens"
+        default_title = "Decoder Self-Attention Heatmap"
+        expected_shape = (len(generated_tokens), len(generated_tokens))
 
     else:
-        raise ValueError("Invalid use_case for encoder-decoder visualization. Choose from 'encoder_self_attention', 'decoder_self_attention', or 'cross_attention'.")
+        raise ValueError("Invalid use_case. Choose from 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.")
 
-    # Prepare data
-    data = attention_matrix.detach().cpu().numpy()
+    # Ensure data dimensions match tokens
+    if data.shape != expected_shape:
+        raise ValueError(f"Attention matrix shape {data.shape} does not match the expected shape {expected_shape} for the selected use_case.")
+
     global_vmin = data.min()
     global_vmax = data.max()
     norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
@@ -690,14 +699,16 @@ def visualize_attention_encoder_decoder(attentions, source_tokens, generated_tok
         column_widths[col_index] = enlarged_size
         row_heights[row_index] = enlarged_size
 
+    title = plot_title if plot_title else default_title
+
     fig, ax = plt.subplots(figsize=(10, 10))
     create_tablelens_heatmap(
         attention_matrix,
         x_labels,
         y_labels,
         title,
-        "Tokens Attended to",
-        "Tokens Attending",
+        xlabel,
+        ylabel,
         ax,
         column_widths=column_widths,
         row_heights=row_heights,
@@ -711,9 +722,9 @@ def visualize_attention_encoder_decoder(attentions, source_tokens, generated_tok
     )
 
     plt.tight_layout()
-    plt.savefig(f"encoder_decoder_{use_case}_heatmap.pdf")
+    plt.savefig(save_path)
     plt.close(fig)
-    print(f"Encoder-decoder {use_case} heatmap saved to encoder_decoder_{use_case}_heatmap.pdf")
+    print(f"Attention heatmap saved to {save_path}")
 
 # Helper function to find top attention cells
 def find_top_cells(data, top_n):
