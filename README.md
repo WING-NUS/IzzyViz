@@ -73,13 +73,12 @@ These dependencies will be installed automatically when you install **IzzyViz** 
 Here's a quick example of how to use **IzzyViz** to visualize self-attention in an encoder-only model (e.g., BERT):
 
 ```python
-from izzyviz.visualization import visualize_attention_encoder_only
 from transformers import BertTokenizer, BertModel
 import torch
 
 # Load model and tokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertModel.from_pretrained('bert-base-uncased', output_attentions=True)
+model = BertModel.from_pretrained('bert-base-uncased')
 
 # Single sentence input
 sentence = "The quick brown fox jumps over the lazy dog."
@@ -88,16 +87,24 @@ tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
 
 # Get attention weights
 with torch.no_grad():
-    outputs = model(**inputs)
-    attentions = outputs.attentions  # List of attention matrices from each layer
+    outputs = model(**inputs, output_attentions=True)
+    attentions = outputs.attentions
 
-# Visualize self-attention
+# Specify regions to highlight (e.g., words "fox" to "lazy")
+left_top_cells = [(4, 4)]   # Starting cell (row index, column index)
+right_bottom_cells = [(8, 8)]  # Ending cell (row index, column index)
+
+# Visualize attention
 visualize_attention_encoder_only(
-    attentions=attentions,
-    tokens=tokens,
-    layer=-1,    # Last layer
-    head=0,      # First attention head
-    mode='self_attention'
+    attentions,
+    tokens,
+    layer=-1,
+    head=8,
+    top_n=5,
+    mode='self_attention',
+    left_top_cells=left_top_cells,
+    right_bottom_cells=right_bottom_cells,
+    plot_titles=["Custom Self-Attention Heatmap Title"]
 )
 ```
 
