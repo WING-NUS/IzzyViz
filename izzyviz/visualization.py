@@ -8,6 +8,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import PowerNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import patches  # Import patches to draw the rectangle
+from .utility import find_non_overlapping_locally_maximal_rectangles
 
 
 # Define a function to make special tokens bold
@@ -17,11 +18,13 @@ def bold_special_tokens(label):
         return f'$\mathbf{{{label}}}$'  # Make it bold using LaTeX math formatting
     return label
 
-def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel, ylabel, ax,
+def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel, ylabel, ax, cmap='Blues',
                              column_widths=None, row_heights=None, top_cells=None, vmin=None,
-                             vmax=None, norm=None, gamma=2.0, left_top_cells=None, right_bottom_cells=None):
+                             vmax=None, norm=None, gamma=2.0, left_top_cells=None, right_bottom_cells=None, linecolor='white', linewidths=1.0,
+                             cbar=True):
     """
     Creates a heatmap with variable cell sizes and annotations for top cells.
+    Returns both the axis and the plotter object for further customization.
     """
 
     if isinstance(attention_matrix, np.ndarray):
@@ -49,17 +52,14 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
         norm = plt.Normalize(vmin=vmin, vmax=vmax)
     # norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
 
-    # Create a custom colormap
-    cmap = plt.get_cmap('Blues')
-
     # Create the heatmap
     ax, plotter = heatmap(
         data,
         xticklabels=x_labels,
         yticklabels=y_labels,
         cmap=cmap,
-        linewidths=1,
-        linecolor='white',
+        linewidths=linewidths,
+        linecolor=linecolor,
         square=True,  # Ensure non-highlighted cells are square
         # cbar_kws={"shrink": 1.0},
         cbar=False,  # Disable the default colorbar
@@ -95,22 +95,23 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     # cbar.set_ticks(normalized_positions)
     # cbar.set_ticklabels([f"{v:.2f}" for v in tick_values])
 
-    # Create a new axis for the colorbar that matches the heatmap's height
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.1)
+    if cbar:
+        # Create a new axis for the colorbar that matches the heatmap's height
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
 
-    # Add the colorbar
-    im = ax.collections[0]
-    cbar = plt.colorbar(im, cax=cax)
+        # Add the colorbar
+        im = ax.collections[0]
+        cbar = plt.colorbar(im, cax=cax)
 
-    # Remove the black border around the colorbar
-    cbar.outline.set_visible(False)
+        # Remove the black border around the colorbar
+        cbar.outline.set_visible(False)
 
-    # Adjust colorbar ticks
-    num_ticks = 7  # Adjust the number of ticks as needed
-    tick_values = np.linspace(vmin, vmax, num_ticks)
-    cbar.set_ticks(tick_values)
-    cbar.set_ticklabels([f"{v:.2f}" for v in tick_values])
+        # Adjust colorbar ticks
+        num_ticks = 7  # Adjust the number of ticks as needed
+        tick_values = np.linspace(vmin, vmax, num_ticks)
+        cbar.set_ticks(tick_values)
+        cbar.set_ticklabels([f"{v:.2f}" for v in tick_values])
 
     ax.xaxis.set_label_position('top')
     ax.xaxis.tick_top()
@@ -125,23 +126,24 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     ax.set_xlabel(xlabel, fontsize=12)
     ax.set_ylabel(ylabel, fontsize=12)
 
-    # Highlight tick labels corresponding to top_cells
-    x_ticklabels = ax.get_xticklabels()
-    y_ticklabels = ax.get_yticklabels()
+    if top_cells is not None:
+        # Highlight tick labels corresponding to top_cells
+        x_ticklabels = ax.get_xticklabels()
+        y_ticklabels = ax.get_yticklabels()
 
-    x_indices = set(col_index for (row_index, col_index) in top_cells)
-    y_indices = set(row_index for (row_index, col_index) in top_cells)
+        x_indices = set(col_index for (row_index, col_index) in top_cells)
+        y_indices = set(row_index for (row_index, col_index) in top_cells)
 
-    # Adjust x tick labels
-    for idx, label in enumerate(x_ticklabels):
-        if idx in x_indices:
-            label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+        # Adjust x tick labels
+        for idx, label in enumerate(x_ticklabels):
+            if idx in x_indices:
+                label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
 
-    # Adjust y tick labels without inversion
-    for row_index in y_indices:
-        if row_index < len(y_ticklabels):
-            label = y_ticklabels[row_index]
-            label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+        # Adjust y tick labels without inversion
+        for row_index in y_indices:
+            if row_index < len(y_ticklabels):
+                label = y_ticklabels[row_index]
+                label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
     
     # Draw red rectangles around the specified regions
     if left_top_cells is not None and right_bottom_cells is not None:
@@ -153,6 +155,10 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
             rb_row, rb_col = rb_cell
 
             if lt_row > rb_row or lt_col > rb_col:
+                print("lt_row: ", lt_row)
+                print("rb_row: ", rb_row)
+                print("lt_col: ", lt_col)
+                print("rb_col: ", rb_col)
                 raise ValueError("Invalid cell coordinates. Left-top cell must be above and to the left of the right-bottom cell.")
             
             if (lt_row < 0 or 
@@ -192,11 +198,14 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
             )
             ax.add_patch(rect)
 
+    return ax, plotter
+
 
 
 def visualize_attention_encoder_only(attentions, tokens, layer, head, question_end=None,
                                      top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
-                                     plot_titles=None, left_top_cells=None, right_bottom_cells=None):
+                                     plot_titles=None, left_top_cells=None, right_bottom_cells=None,
+                                     auto_detect_regions=False, save_path=None):
     """
     Visualizes attention matrices for encoder-only models.
 
@@ -213,8 +222,17 @@ def visualize_attention_encoder_only(attentions, tokens, layer, head, question_e
     - plot_titles: List of titles for the subplots. If None, default titles are used.
     - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
     - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
+    - auto_detect_regions: If True, automatically detect locally maximal attention regions.
+                          This will override any manually specified left_top_cells and right_bottom_cells.
     """
+    # Removes the first dimension if it is 1 (typically the batch size for a single input).
     attn = attentions[layer].squeeze(0)[head]
+
+    if auto_detect_regions:
+        # Convert attention matrix to numpy if it's a tensor
+        attn_np = attn.detach().cpu().numpy() if torch.is_tensor(attn) else attn
+        # Find locally maximal rectangles
+        left_top_cells, right_bottom_cells = find_non_overlapping_locally_maximal_rectangles(attn_np)
 
     if mode == 'question_context':
         if question_end is None:
@@ -282,7 +300,7 @@ def visualize_attention_encoder_only(attentions, tokens, layer, head, question_e
                 column_widths[col_index] = enlarged_size
                 row_heights[row_index] = enlarged_size
 
-            create_tablelens_heatmap(
+            ax, _ = create_tablelens_heatmap(
                 att_matrix,
                 x_labels,
                 y_labels,
@@ -301,10 +319,13 @@ def visualize_attention_encoder_only(attentions, tokens, layer, head, question_e
                 right_bottom_cells=right_bottom_cells
             )
 
+        if save_path is None:
+            save_path = "QC_attention_heatmaps.pdf"
+
         plt.tight_layout()
-        plt.savefig("QC_attention_heatmaps.pdf")
+        plt.savefig(save_path)
         plt.close(fig)
-        print("Attention heatmaps saved to QC_attention_heatmaps.pdf")
+        print("Attention heatmaps saved to ", save_path)
 
     elif mode == 'self_attention':
         # Self-Attention Mode
@@ -342,8 +363,7 @@ def visualize_attention_encoder_only(attentions, tokens, layer, head, question_e
             column_widths[col_index] = enlarged_size
             row_heights[row_index] = enlarged_size
 
-        # Create heatmap
-        create_tablelens_heatmap(
+        ax, _ = create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
@@ -362,10 +382,13 @@ def visualize_attention_encoder_only(attentions, tokens, layer, head, question_e
             right_bottom_cells=right_bottom_cells
         )
 
+        if save_path is None:
+            save_path = "self_attention_heatmap.pdf"
+
         plt.tight_layout()
-        plt.savefig("self_attention_heatmap.pdf")
+        plt.savefig(save_path)
         plt.close(fig)
-        print("Self-attention heatmap saved to self_attention_heatmap.pdf")
+        print("Self-attention heatmap saved to ", save_path)
 
     else:
         raise ValueError("Invalid mode for encoder-only visualization. Choose from 'question_context' or 'self_attention'.")
@@ -373,7 +396,7 @@ def visualize_attention_encoder_only(attentions, tokens, layer, head, question_e
 def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens, layer, head,
                                      top_n=3, enlarged_size=1.8, gamma=1.5,
                                      plot_titles=None, left_top_cells=None, right_bottom_cells=None,
-                                     use_case='full_sequence'):
+                                     use_case='full_sequence', save_path=None):
     """
     Visualizes attention matrices for decoder-only models.
 
@@ -427,7 +450,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             row_heights[row_index] = enlarged_size
 
         fig, ax = plt.subplots(figsize=(10, 10))
-        create_tablelens_heatmap(
+        ax, _ = create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
@@ -446,10 +469,13 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             right_bottom_cells=right_bottom_cells
         )
 
+        if save_path is None:
+            save_path = "decoder_self_attention_heatmap.pdf"
+
         plt.tight_layout()
-        plt.savefig("decoder_self_attention_heatmap.pdf")
+        plt.savefig(save_path)
         plt.close(fig)
-        print("Decoder self-attention heatmap saved to decoder_self_attention_heatmap.pdf")
+        print("Decoder self-attention heatmap saved to ", save_path)
 
     elif use_case == 'self_attention_source':
         # Self-Attention for Source Tokens (no causal masking)
@@ -482,7 +508,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             row_heights[row_index] = enlarged_size
 
         fig, ax = plt.subplots(figsize=(10, 10))
-        create_tablelens_heatmap(
+        ax, _ = create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
@@ -501,10 +527,13 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             right_bottom_cells=right_bottom_cells
         )
 
+        if save_path is None:
+            save_path = "decoder_self_attention_source_tokens_heatmap.pdf"
+
         plt.tight_layout()
-        plt.savefig("decoder_self_attention_source_tokens_heatmap.pdf")
+        plt.savefig(save_path)
         plt.close(fig)
-        print("Decoder self-attention heatmap for source tokens saved to decoder_self_attention_source_tokens_heatmap.pdf")
+        print("Decoder self-attention heatmap for source tokens saved to ", save_path)
 
     elif use_case == 'generated_to_source':
         # Generated-to-Source Attention (fully connected)
@@ -537,7 +566,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             row_heights[row_index] = enlarged_size
 
         fig, ax = plt.subplots(figsize=(10, 10))
-        create_tablelens_heatmap(
+        ax, _ = create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
@@ -556,10 +585,13 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             right_bottom_cells=right_bottom_cells
         )
 
+        if save_path is None:
+            save_path = "decoder_generated_to_source_attention_heatmap.pdf"
+
         plt.tight_layout()
-        plt.savefig("decoder_generated_to_source_attention_heatmap.pdf")
+        plt.savefig(save_path)
         plt.close(fig)
-        print("Decoder generated-to-source attention heatmap saved to decoder_generated_to_source_attention_heatmap.pdf")
+        print("Decoder generated-to-source attention heatmap saved to ", save_path)
 
     elif use_case == 'self_attention_generated':
         # Self-Attention for Generated Tokens (causal-masked)
@@ -593,7 +625,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             row_heights[row_index] = enlarged_size
 
         fig, ax = plt.subplots(figsize=(10, 10))
-        create_tablelens_heatmap(
+        ax, _ = create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
@@ -612,10 +644,13 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
             right_bottom_cells=right_bottom_cells
         )
 
+        if save_path is None:
+            save_path = "decoder_self_attention_generated_tokens_heatmap.pdf"
+
         plt.tight_layout()
-        plt.savefig("decoder_self_attention_generated_tokens_heatmap.pdf")
+        plt.savefig(save_path)
         plt.close(fig)
-        print("Decoder self-attention heatmap for generated tokens saved to decoder_self_attention_generated_tokens_heatmap.pdf")
+        print("Decoder self-attention heatmap for generated tokens saved to ", save_path)
 
     else:
         raise ValueError("Invalid use_case for decoder-only visualization. Choose from 'full_sequence', 'self_attention_source', 'generated_to_source', or 'self_attention_generated'.")
@@ -623,7 +658,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
 def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generated_tokens,
                                         top_n=3, enlarged_size=1.8, gamma=1.5,
                                         plot_title=None, left_top_cells=None, right_bottom_cells=None,
-                                        save_path="cross_attention_heatmap.pdf", use_case='cross_attention'):
+                                        save_path=None, use_case='cross_attention'):
     """
     Visualizes attention matrices for encoder-decoder models.
 
@@ -702,7 +737,7 @@ def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generat
     title = plot_title if plot_title else default_title
 
     fig, ax = plt.subplots(figsize=(10, 10))
-    create_tablelens_heatmap(
+    ax, _ = create_tablelens_heatmap(
         attention_matrix,
         x_labels,
         y_labels,
@@ -722,15 +757,397 @@ def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generat
     )
 
     plt.tight_layout()
+    if save_path is None:
+        save_path = "attention_heatmap.pdf"
     plt.savefig(save_path)
     plt.close(fig)
     print(f"Attention heatmap saved to {save_path}")
 
 # Helper function to find top attention cells
 def find_top_cells(data, top_n):
+    if top_n == 0:
+        return []
     flat_data = data.flatten()
     threshold = np.partition(flat_data, -top_n)[-top_n]
     top_indices = np.where(flat_data >= threshold)[0]
     top_indices_sorted = top_indices[np.argsort(-flat_data[top_indices])]
     top_cells = [np.unravel_index(idx, data.shape) for idx in top_indices_sorted]
     return top_cells
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from matplotlib.collections import PatchCollection
+
+def difference_heatmap(
+    data1,
+    data2,
+    base="data1",  # "data1", "data2", or "none" to choose the background
+    circle_scale=1.0,
+    circle_color_positive="blue",
+    circle_color_negative="red",
+    ax=None,
+    gamma=1.5,  # Added gamma parameter for PowerNorm
+    cbar=True,
+    **kwargs
+):
+    """
+    Plot a heatmap for one matrix and overlay circles
+    whose size encodes the difference between data2 and data1.
+
+    Parameters
+    ----------
+    data1 : ndarray or DataFrame
+        First attention matrix.
+    data2 : ndarray or DataFrame
+        Second attention matrix, must be same shape as data1.
+    base : str, optional
+        Which matrix to use for the background heatmap: "data1", "data2", or "none".
+        If "none", no colored background is drawn; only the circles are shown.
+    circle_scale : float, optional
+        A scale factor to multiply all circle radii. Adjust to increase or decrease
+        the maximum circle size.
+    circle_color_positive : str, optional
+        Matplotlib color for circles where (data2 - data1) > 0.
+    circle_color_negative : str, optional
+        Matplotlib color for circles where (data2 - data1) < 0.
+    ax : matplotlib Axes, optional
+        Axes on which to plot. If None, uses current Axes.
+    gamma : float, optional
+        Gamma value for PowerNorm (default: 1.5).
+    **kwargs
+        Additional keyword args passed to the underlying `heatmap` function.
+    """
+    # 1. Check shapes
+    if data1.shape != data2.shape:
+        raise ValueError("Both matrices must have the same shape.")
+        
+    diff = np.array(data2) - np.array(data1)  # ensure ndarray
+    
+    # 2. Decide background data
+    if base == "data1":
+        bg_data = data1
+    elif base == "data2":
+        bg_data = data2
+    else:
+        # If base == "none", we just pass in zeros so the color is uniform
+        bg_data = np.zeros_like(diff)
+
+    # 3. Set up PowerNorm for background coloring
+    if base != "none":
+        vmin = bg_data.min()
+        vmax = bg_data.max()
+        norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
+        kwargs.setdefault('norm', norm)
+        kwargs.setdefault('cmap', 'Blues')  # default colormap
+        kwargs.setdefault('vmin', vmin)
+        kwargs.setdefault('vmax', vmax)
+
+    else:
+        # For "none" base, set uniform white background with black borders
+        kwargs.setdefault("cmap", plt.cm.colors.ListedColormap(['white']))
+        kwargs.setdefault("linecolor", 'black')  # Set border color to black
+        kwargs.setdefault("linewidths", 0.7)
+        kwargs.setdefault("cbar", False)
+        
+    # 4. Draw the base heatmap
+    if ax is None:
+        ax = plt.gca()
+
+    # Use the existing heatmap function with PowerNorm
+    ax, plotter = create_tablelens_heatmap(
+        bg_data,
+        ax=ax,
+        **kwargs
+    )
+
+    # 5. Overlay circles that show the magnitude of the difference
+    row_centers = plotter.row_centers
+    col_centers = plotter.col_centers
+    
+    # We need the absolute maximum difference to normalize circle sizes
+    max_abs_diff = np.max(np.abs(diff)) if np.any(diff != 0) else 1e-6
+    
+    # List to store circle patches
+    patches = []
+    colors = []
+    
+    # For each cell, add a circle whose radius is proportional to |diff|
+    for i, y in enumerate(row_centers):
+        for j, x in enumerate(col_centers):
+            val = diff[i, j]
+            if val == 0:
+                continue  # no circle if there's no difference
+            
+            # radius is scaled by the absolute difference, relative to the global max
+            radius = circle_scale * (abs(val) / max_abs_diff) * 0.5
+            circ = Circle(
+                (x, y),
+                radius=radius
+            )
+            patches.append(circ)
+            
+            # Choose color based on sign
+            if val > 0:
+                colors.append(circle_color_positive)
+            else:
+                colors.append(circle_color_negative)
+
+    # Create a PatchCollection and add it to the plot
+    collection = PatchCollection(patches, facecolor=colors, edgecolor='none', alpha=0.7)
+    ax.add_collection(collection)
+
+    # Set axis limits to match the heatmap
+    ax_autoscale = False
+    if not ax_autoscale:
+        ax.set_xlim(plotter.col_positions[0], plotter.col_positions[-1])
+        ax.set_ylim(plotter.row_positions[0], plotter.row_positions[-1])
+        ax.invert_yaxis()
+
+    return ax
+
+
+# When you run compare_two_attentions(attn1, attn2, tokens), you'll get:
+# A background heatmap showing attn1.
+# Circles in each cell whose radius is proportional to |attn2 - attn1|.
+# Orange circles where attn2 > attn1, blue circles where attn2 < attn1 (by the default you gave).
+def compare_two_attentions(attn1, attn2, tokens, title="Comparison: Matrix2 - Matrix1", base="data1", save_path=None):
+    """
+    Compares two attention matrices and visualizes their differences in a heatmap.
+    
+    Parameters:
+    - attn1: First attention matrix (baseline)
+    - attn2: Second attention matrix to compare against attn1
+    - tokens: List of token labels for x/y axes
+    - save_path: File path to save the generated heatmap PDF
+    - title: Title for the plot (default: "Comparison: Matrix2 - Matrix1")
+    - cmap: Matplotlib colormap for the heatmap (default: 'Blues')
+    """
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Convert tensors to numpy if needed
+    if torch.is_tensor(attn1):
+        attn1 = attn1.detach().cpu().numpy()
+    if torch.is_tensor(attn2):
+        attn2 = attn2.detach().cpu().numpy()
+
+    # Create the difference heatmap
+    difference_heatmap(
+        attn1,
+        attn2,
+        base=base,  # draw the background using attn1; circles show how attn2 differs
+        x_labels=[bold_special_tokens(token) for token in tokens],
+        y_labels=[bold_special_tokens(token) for token in tokens],
+        title=title,
+        xlabel="Tokens Attended to",
+        ylabel="Tokens Attending",
+        circle_scale=1.0,            # adjust for bigger or smaller circles
+        circle_color_positive="orange", # where attn2 > attn1
+        circle_color_negative="blue", # where attn2 < attn1
+        ax=ax
+    )
+
+    # # Set title and adjust layout
+    # ax.set_title(title, fontsize=14)
+    # ax.set_xlabel("Tokens", fontsize=12)
+    # ax.set_ylabel("Tokens", fontsize=12)
+
+    # # Rotate x-axis labels for better readability
+    # for label in ax.get_xticklabels():
+    #     label.set_rotation(45)
+
+    plt.tight_layout()
+    if save_path is None:
+        save_path = "attention_comparison_heatmap.pdf"
+    plt.savefig(save_path)
+    plt.close(fig)
+    print(f"Attention comparison heatmap saved to {save_path}")
+
+
+def check_stability_heatmap(
+    matrices,
+    x_labels=None,
+    y_labels=None,
+    title=None,
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
+    ax=None,
+    use_std_error=False,      # If True, use SEM = std/sqrt(n); else use raw std
+    circle_scale=1.0,         # Base scaling factor for circles
+    cmap="Blues",            # Colormap for circle colors
+    linecolor="black",        # Grid line color
+    linewidths=0.5,          # Grid line width
+    save_path="check_stability_heatmap.pdf",
+    gamma=1.5               # Added gamma parameter for PowerNorm
+):
+    """
+    Creates a 'circle-heatmap' given n attention matrices of the same shape.
+    
+    - The color of each circle encodes the mean across the n matrices.
+    - The size (radius) of each circle is inversely proportional to the measure of spread
+      (e.g. standard deviation or standard error), meaning more stable cells => larger circles.
+
+    Parameters
+    ----------
+    matrices : list or np.ndarray
+        A list of attention matrices (each shape = (R, C)) or a single 3D array of shape (n, R, C).
+    x_labels : list of str, optional
+        Labels for columns (x-axis).
+    y_labels : list of str, optional
+        Labels for rows (y-axis).
+    title : str, optional
+        Title of the plot.
+    xlabel : str
+        Label for x-axis.
+    ylabel : str
+        Label for y-axis.
+    ax : matplotlib.axes.Axes, optional
+        Axes on which to plot. If None, a new figure+axes is created.
+    use_std_error : bool
+        Whether to use standard error of the mean (SEM) instead of standard deviation.
+    circle_scale : float
+        Overall scale for circle sizes. Increase if circles are too small, or decrease if too large.
+    cmap : str or matplotlib.colors.Colormap
+        Colormap used to color circles by the mean value. Defaults to 'Blues'.
+    linecolor : str
+        Color of grid lines in the underlying table-lens heatmap.
+    linewidths : float
+        Width of grid lines in the underlying table-lens heatmap.
+    save_path : str, optional
+        If provided, saves the figure to this path (PDF, PNG, etc.). 
+    gamma : float, optional
+        Gamma value for PowerNorm used in circle coloring (default: 1.5).
+    **kwargs : dict
+        Additional arguments passed down to `create_tablelens_heatmap` for fine-tuning.
+
+    Returns
+    -------
+    ax : matplotlib.axes.Axes
+        The axes with the plot.
+    """
+    # Convert input to numpy array
+    matrices = np.array(matrices)  # shape: (n, R, C)
+    if matrices.ndim != 3:
+        raise ValueError(
+            "Expected `matrices` to be a list or 3D array of shape (n, R, C). "
+            f"Got shape: {matrices.shape}"
+        )
+
+    n, R, C = matrices.shape
+
+    # Compute mean and spread
+    mean_vals = np.mean(matrices, axis=0)  # shape (R, C)
+    std_vals = np.std(matrices, axis=0)    # shape (R, C)
+
+    if use_std_error:
+        # Standard error of the mean (SEM) = std / sqrt(n)
+        error_vals = std_vals / np.sqrt(n)
+    else:
+        # Use the plain standard deviation
+        error_vals = std_vals
+
+    # Create blank background
+    blank_data = np.zeros_like(mean_vals)
+
+    # Prepare default labels if None
+    if x_labels is None:
+        x_labels = [f"X{i}" for i in range(C)]
+    if y_labels is None:
+        y_labels = [f"Y{i}" for i in range(R)]
+
+    # Create or use existing Axes
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+    else:
+        fig = ax.figure
+
+    # Create the base heatmap with white background and black borders
+    ax, plotter = create_tablelens_heatmap(
+        attention_matrix=blank_data,
+        x_labels=x_labels,
+        y_labels=y_labels,
+        title=title,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        ax=ax,
+        cmap=plt.cm.colors.ListedColormap(['white']),
+        linecolor=linecolor,
+        linewidths=linewidths,
+        cbar=False
+    )
+
+    # Set up PowerNorm for circle colors
+    min_mean, max_mean = mean_vals.min(), mean_vals.max()
+    # To avoid zero range, handle the degenerate case:
+    if np.isclose(min_mean, max_mean):
+        max_mean = min_mean + 1e-9
+
+    norm = PowerNorm(gamma=gamma, vmin=min_mean, vmax=max_mean)
+
+    # Get cell centers from plotter
+    row_centers = plotter.row_centers
+    col_centers = plotter.col_centers
+
+    # Calculate circle sizes
+    nonzero_errors = error_vals[error_vals > 0]
+    min_err = np.min(nonzero_errors) if len(nonzero_errors) > 0 else 1.0
+
+    patches = []
+    colors = []
+
+    # For each cell, add a circle
+    for i in range(R):
+        for j in range(C):
+            mval = mean_vals[i, j]
+            err = error_vals[i, j]
+
+            # Determine radius (max 0.5 to fit within cell)
+            if err < 1e-12:
+                radius = circle_scale * 0.5  # Max size that fits in cell
+            else:
+                radius = min(circle_scale * 0.5 * (min_err / err), 0.5)
+
+            # Create circle at cell center
+            circ = Circle(
+                (col_centers[j], row_centers[i]),
+                radius=radius
+            )
+            patches.append(circ)
+            colors.append(plt.get_cmap(cmap)(norm(mval)))
+
+    # Add circles to plot
+    collection = PatchCollection(patches, facecolor=colors, edgecolor='none', alpha=0.7)
+    ax.add_collection(collection)
+
+    # Create colorbar
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.1)
+
+    # Add the colorbar using the ScalarMappable
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = plt.colorbar(sm, cax=cax)
+
+    # Remove the black border around the colorbar
+    cbar.outline.set_visible(False)
+
+    # Adjust colorbar ticks
+    num_ticks = 7  # Adjust the number of ticks as needed
+    tick_values = np.linspace(min_mean, max_mean, num_ticks)
+    cbar.set_ticks(tick_values)
+    cbar.set_ticklabels([f"{v:.2f}" for v in tick_values])
+    cbar.set_label("Mean Attention Score", rotation=90)
+
+    # Format labels
+    ax.set_xticklabels(x_labels, rotation=45, ha='right')
+    ax.set_yticklabels(y_labels, rotation=0, ha='right')
+
+    if save_path is not None:
+        plt.tight_layout()
+        plt.savefig(save_path)
+        plt.close(fig)
+        print(f"Check Stability heatmap saved to {save_path}")
+    else:
+        plt.tight_layout()
+
+    return ax
