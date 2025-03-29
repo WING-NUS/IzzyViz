@@ -1,3 +1,3 @@
-from .visualization import visualize_attention_decoder_only, visualize_attention_encoder_decoder, visualize_attention_encoder_only, compare_two_attentions, check_stability_heatmap
+from .visualization import visualize_attention_decoder_only, visualize_attention_encoder_decoder, visualize_attention_encoder_only, compare_two_attentions, check_stability_heatmap, compare_two_attentions_with_circles, check_stability_heatmap_new, target_ring_heatmap, check_stability_heatmap_with_gradient_color, half_pie_heatmap, selective_attention_evolution_heatmap, visualize_attention_evolution
 
-__all__ = ['visualize_attention_decoder_only', 'visualize_attention_encoder_decoder', 'visualize_attention_encoder_only', 'compare_two_attentions', 'check_stability_heatmap']
+__all__ = ['visualize_attention_decoder_only', 'visualize_attention_encoder_decoder', 'visualize_attention_encoder_only', 'compare_two_attentions', 'check_stability_heatmap', 'compare_two_attentions_with_circles', 'check_stability_heatmap_new', 'target_ring_heatmap', 'check_stability_heatmap_with_gradient_color', 'half_pie_heatmap', 'selective_attention_evolution_heatmap', 'visualize_attention_evolution']
