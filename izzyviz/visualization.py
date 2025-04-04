@@ -203,13 +203,13 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
 
 
 
-def visualize_attention_encoder_only(attentions, tokens, layer, head, question_end=None,
-                                     top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
-                                     plot_titles=None, left_top_cells=None, right_bottom_cells=None,
-                                     auto_detect_regions=False, save_path=None):
+def visualize_attention_self_attention(attentions, tokens, layer, head, question_end=None,
+                                top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
+                                plot_titles=None, left_top_cells=None, right_bottom_cells=None,
+                                auto_detect_regions=False, save_path=None):
     """
-    Visualizes attention matrices for encoder-only models.
-
+    Visualizes attention matrices for encoder-only and decoder-only models.
+    
     Parameters:
     - attentions: List of attention matrices from the model.
     - tokens: List of token labels to display on the heatmaps.
@@ -656,7 +656,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
     else:
         raise ValueError("Invalid use_case for decoder-only visualization. Choose from 'full_sequence', 'self_attention_source', 'generated_to_source', or 'self_attention_generated'.")
 
-def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generated_tokens,
+def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decoder_tokens,
                                         top_n=3, enlarged_size=1.8, gamma=1.5,
                                         plot_title=None, left_top_cells=None, right_bottom_cells=None,
                                         save_path=None, use_case='cross_attention'):
@@ -665,8 +665,8 @@ def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generat
 
     Parameters:
     - attention_matrix: The attention matrix (numpy array or torch tensor).
-    - source_tokens: List of source token labels.
-    - generated_tokens: List of generated token labels.
+    - encoder_tokens: List of encoder token labels.
+    - decoder_tokens: List of decoder token labels.
     - top_n: The number of top attention scores to highlight.
     - enlarged_size: Factor by which to enlarge the top cells.
     - gamma: Gamma value for the power normalization of the colormap.
@@ -684,30 +684,30 @@ def visualize_attention_encoder_decoder(attention_matrix, source_tokens, generat
 
     if use_case == 'cross_attention':
         # Cross-Attention: Decoder attending to Encoder outputs
-        x_labels = [bold_special_tokens(token) for token in source_tokens]
-        y_labels = [bold_special_tokens(token) for token in generated_tokens]
-        xlabel = "Source Tokens"
-        ylabel = "Generated Tokens"
+        x_labels = [bold_special_tokens(token) for token in encoder_tokens]
+        y_labels = [bold_special_tokens(token) for token in decoder_tokens]
+        xlabel = "Encoder Tokens"
+        ylabel = "Decoder Tokens"
         default_title = "Cross-Attention Heatmap (Decoder to Encoder)"
-        expected_shape = (len(generated_tokens), len(source_tokens))
+        expected_shape = (len(decoder_tokens), len(encoder_tokens))
 
     elif use_case == 'encoder_self_attention':
         # Encoder Self-Attention
-        x_labels = [bold_special_tokens(token) for token in source_tokens]
-        y_labels = [bold_special_tokens(token) for token in source_tokens]
-        xlabel = "Source Tokens"
-        ylabel = "Source Tokens"
+        x_labels = [bold_special_tokens(token) for token in encoder_tokens]
+        y_labels = [bold_special_tokens(token) for token in encoder_tokens]
+        xlabel = "Encoder Tokens"
+        ylabel = "Encoder Tokens"
         default_title = "Encoder Self-Attention Heatmap"
-        expected_shape = (len(source_tokens), len(source_tokens))
+        expected_shape = (len(encoder_tokens), len(encoder_tokens))
 
     elif use_case == 'decoder_self_attention':
         # Decoder Self-Attention
-        x_labels = [bold_special_tokens(token) for token in generated_tokens]
-        y_labels = [bold_special_tokens(token) for token in generated_tokens]
-        xlabel = "Generated Tokens"
-        ylabel = "Generated Tokens"
+        x_labels = [bold_special_tokens(token) for token in decoder_tokens]
+        y_labels = [bold_special_tokens(token) for token in decoder_tokens]
+        xlabel = "Decoder Tokens"
+        ylabel = "Decoder Tokens"
         default_title = "Decoder Self-Attention Heatmap"
-        expected_shape = (len(generated_tokens), len(generated_tokens))
+        expected_shape = (len(decoder_tokens), len(decoder_tokens))
 
     else:
         raise ValueError("Invalid use_case. Choose from 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.")
@@ -2261,1404 +2261,243 @@ def half_pie_heatmap(
 
     return ax
 
-def adaptive_attention_evolution_heatmap(
-    matrices,
+
+import matplotlib.patches as patches
+from matplotlib.patches import Wedge, Rectangle, Circle
+from matplotlib.colors import PowerNorm
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
+import matplotlib.cm as cm
+import re
+from mpl_toolkits.axes_grid1 import make_axes_locatable 
+import torch # Ensure torch is imported if handling tensors
+
+
+def visualize_attention_evolution_sparklines(
+    attentions_over_time,  # List/array of shape [n_epochs, ..., n_tokens, n_tokens]
     tokens=None,
-    x_labels=None,
-    y_labels=None,
-    title="Attention Evolution",
+    layer=None,
+    head=None,
+    title="Attention Evolution Over Training",
     xlabel="Tokens Attended to",
     ylabel="Tokens Attending",
-    ax=None,
     cmap="Blues",
-    gamma=1.5,
-    linecolor="white",
-    linewidths=1.0,
-    ring_radius=0.45,
-    save_path=None,
-    show_background=True,
-    use_std_error=False,
-    max_epochs_to_show=8,     # Maximum number of epochs to show individually
-    max_tokens_to_show=30,    # Maximum number of tokens to show
-    epoch_aggregation="bin",  # Options: "bin", "select", "trend"
-    token_selection="importance", # Options: "importance", "random", "first_last", "custom"
-    custom_token_indices=None,    # Custom token indices to display
-    custom_epoch_indices=None,    # Custom epoch indices to display
-    region_detection=False,       # Whether to detect and highlight attention regions
-    region_threshold=0.8,         # Threshold for region detection
-    display_mode="half_pie"       # Options: "half_pie", "line_trend", "heatmap_grid"
+    figsize=(12, 10),
+    sparkline_color_dark="darkblue",
+    sparkline_color_light="white",
+    sparkline_linewidth=1.0,
+    sparkline_alpha=0.8,
+    background_alpha=1.0,  # Alpha for the background heatmap
+    gamma=1.5,  # For PowerNorm
+    grid_color="white",
+    grid_linewidth=0.5,
+    normalize_sparklines=True,  # New parameter to control sparkline normalization
+    save_path="attention_evolution_sparklines.pdf",
+    title_fontsize=16  # Added parameter for title size
 ):
     """
-    Creates an adaptive heatmap for visualizing attention evolution over many epochs and/or with large matrices.
+    Visualize the evolution of attention matrices over training epochs with sparklines.
     
-    This function addresses two key scaling issues:
-    1. Too many epochs → aggregates epochs or selects representative ones
-    2. Too many tokens → samples tokens based on importance or user selection
-    
-    Parameters
-    ----------
-    matrices : list or np.ndarray
-        A list of attention matrices or a single 3D array of shape (n_epochs, n_rows, n_cols)
-    tokens : list of str, optional
-        The token labels corresponding to the matrix rows/columns
-    x_labels : list of str, optional
-        Column labels. If None and tokens provided, will use tokens
-    y_labels : list of str, optional
-        Row labels. If None and tokens provided, will use tokens
-    title : str, optional
-        Plot title
-    xlabel : str
-        X-axis label
-    ylabel : str
-        Y-axis label
-    ax : matplotlib.axes.Axes, optional
-        Axes to plot on. If None, a new figure + axes is created
-    cmap : str or matplotlib.colors.Colormap
-        Colormap for visualization. Defaults to 'Blues'
-    gamma : float
-        Gamma value for the PowerNorm color scaling
-    linecolor : str
-        Color of grid lines in the heatmap
-    linewidths : float
-        Width of grid lines in the heatmap
-    ring_radius : float
-        Radius for the visualizations in each cell (as fraction of half-cell size)
-    save_path : str, optional
-        If provided, saves the figure to this path
-    show_background : bool
-        If True, colors cell backgrounds by mean attention
-    use_std_error : bool
-        If True, uses standard error instead of standard deviation
-    max_epochs_to_show : int
-        Maximum number of epochs to show individually
-    max_tokens_to_show : int
-        Maximum number of tokens to include in visualization
-    epoch_aggregation : str
-        How to handle too many epochs: "bin" (group into bins), "select" (pick representative epochs),
-        "trend" (show trend indicators)
-    token_selection : str
-        How to select tokens when there are too many: "importance" (most attended),
-        "random", "first_last" (first and last n/2), "custom" (user-specified)
-    custom_token_indices : list of int, optional
-        When token_selection="custom", these indices are used
-    custom_epoch_indices : list of int, optional
-        When epoch_aggregation="select" and custom selection desired, these indices are used
-    region_detection : bool
-        Whether to detect and highlight attention regions
-    region_threshold : float
-        Threshold for region detection (0.0 to 1.0)
-    display_mode : str
-        Visualization type: "half_pie" (like original), "line_trend" (sparkline in each cell),
-        "heatmap_grid" (small heatmap in each cell)
+    Args:
+        attentions_over_time: List or array of attention matrices [n_epochs, ..., n_tokens, n_tokens]
+        tokens: List of token labels (optional)
+        layer: Layer index to extract (if needed)
+        head: Head index to extract (if needed)
+        title: Plot title
+        xlabel, ylabel: Axis labels
+        cmap: Colormap for the background
+        figsize: Figure size
+        sparkline_color: Color for the evolution line charts
+        sparkline_linewidth: Width of sparkline
+        sparkline_alpha: Transparency of sparklines
+        highlight_top_n: Number of top cells to highlight
+        background_alpha: Transparency of the background heatmap
+        gamma: For PowerNorm color scaling
+        highlight_color: Color for highlighting top cells
+        grid_color: Color for grid lines
+        grid_linewidth: Width of grid lines
+        save_path: Path to save the figure
         
-    Returns
-    -------
-    ax : matplotlib.axes.Axes
-        The axes containing the plot
-    selected_indices : list of int
-        The indices of tokens that were selected for visualization
-    epoch_info : dict
-        Information about how epochs were processed
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import matplotlib.patches as patches
-    from matplotlib.patches import Wedge, Rectangle, Circle
-    from matplotlib.colors import PowerNorm
-    from matplotlib.collections import LineCollection
-    from matplotlib.lines import Line2D
-    import matplotlib.cm as cm
-    import re
-    
-    # 1) Convert input to np.array (n_epochs, n_rows, n_cols)
-    matrices = np.array(matrices)
-    if matrices.ndim != 3:
-        raise ValueError(
-            f"Expected matrices to be a list or 3D array of shape (n_epochs, n_rows, n_cols). "
-            f"Got shape: {matrices.shape}"
-        )
-
-    n_epochs, n_rows, n_cols = matrices.shape
-    
-    # Handle token labels
-    if tokens is not None:
-        if len(tokens) != n_rows or len(tokens) != n_cols:
-            raise ValueError(f"Token list length ({len(tokens)}) doesn't match matrix dimensions ({n_rows}x{n_cols})")
-        if x_labels is None:
-            x_labels = tokens
-        if y_labels is None:
-            y_labels = tokens
-    
-    if x_labels is None:
-        x_labels = [f"X{j}" for j in range(n_cols)]
-    if y_labels is None:
-        y_labels = [f"Y{i}" for i in range(n_rows)]
-    
-    # 2) Handle token selection if we have too many tokens
-    selected_indices = None
-    epoch_indices = None
-    
-    if n_rows > max_tokens_to_show or n_cols > max_tokens_to_show:
-        print(f"Matrix is too large ({n_rows}x{n_cols}). Selecting {max_tokens_to_show} tokens...")
-        selected_indices = select_important_tokens(
-            matrices, tokens, max_tokens_to_show, 
-            method=token_selection, 
-            custom_indices=custom_token_indices
-        )
-        
-        # Filter matrices and labels
-        matrices = matrices[:, selected_indices, :][:, :, selected_indices]
-        if tokens is not None:
-            tokens = [tokens[i] for i in selected_indices]
-        x_labels = [x_labels[i] for i in selected_indices]
-        y_labels = [y_labels[i] for i in selected_indices]
-        n_rows, n_cols = len(selected_indices), len(selected_indices)
-    else:
-        selected_indices = list(range(n_rows))
-    
-    # 3) Handle epoch aggregation if we have too many epochs
-    epoch_info = {"method": epoch_aggregation, "original_count": n_epochs}
-    
-    if n_epochs > max_epochs_to_show:
-        print(f"Too many epochs ({n_epochs}). {epoch_aggregation.capitalize()}ing epochs...")
-        
-        if epoch_aggregation == "bin":
-            # Group epochs into bins
-            n_bins = max_epochs_to_show
-            bin_size = n_epochs // n_bins
-            binned_matrices = []
-            bin_labels = []
-            
-            for i in range(n_bins):
-                start_idx = i * bin_size
-                end_idx = start_idx + bin_size if i < n_bins-1 else n_epochs
-                bin_matrix = np.mean(matrices[start_idx:end_idx], axis=0)
-                binned_matrices.append(bin_matrix)
-                bin_labels.append(f"{start_idx}-{end_idx-1}")
-            
-            matrices = np.array(binned_matrices)
-            n_epochs = len(binned_matrices)
-            epoch_info["bins"] = bin_labels
-            epoch_info["bin_size"] = bin_size
-            
-        elif epoch_aggregation == "select":
-            # Select representative epochs
-            if custom_epoch_indices is not None:
-                epoch_indices = custom_epoch_indices[:max_epochs_to_show]
-    else:
-        # Evenly spaced epochs
-        step = max(1, n_epochs // max_epochs_to_show)
-        epoch_indices = list(range(0, n_epochs, step))[:max_epochs_to_show]
-        # Always include the first and last epoch
-        if n_epochs-1 not in epoch_indices:
-            epoch_indices[-1] = n_epochs-1
-            
-            matrices = matrices[epoch_indices]
-            n_epochs = len(epoch_indices)
-            epoch_info["selected_indices"] = epoch_indices
-            
-        elif epoch_aggregation == "trend":
-            # We'll compute min, max, and mean but still use original matrices
-            # The trend indicators will be shown in the visualization
-            trend_data = {
-                "min": np.min(matrices, axis=0),
-                "max": np.max(matrices, axis=0),
-                "mean": np.mean(matrices, axis=0),
-                "first": matrices[0],
-                "last": matrices[-1]
-            }
-            epoch_info["trend_data"] = trend_data
-        else:
-            epoch_indices = list(range(n_epochs))
-    
-    # 4) Compute means and variability measures
-    mean_vals = np.mean(matrices, axis=0)
-    std_vals = np.std(matrices, axis=0)
-    if use_std_error:
-        error_vals = std_vals / np.sqrt(n_epochs)
-    else:
-        error_vals = std_vals
-    
-    # 5) Compute global min/max for color scale
-    all_values = matrices.flatten()
-    vmin, vmax = all_values.min(), all_values.max()
-    if np.isclose(vmin, vmax):
-        vmax = vmin + 1e-9
-    
-    # 6) Create or use existing axes
-    if ax is None:
-        fig_scale = max(1.0, n_rows / 10)  # Scale figure size with token count
-        fig, ax = plt.subplots(figsize=(8 * fig_scale, 8 * fig_scale))
-    else:
-        fig = ax.figure
-    
-    # 7) Create PowerNorm for color scaling
-    norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
-    
-    # 8) Decide background data
-    if show_background:
-        background_data = mean_vals
-        background_cmap = cmap
-    else:
-        background_data = np.full_like(mean_vals, np.nan)
-        background_cmap = cmap
-    
-    # 9) Draw the base heatmap
-    ax, plotter = create_tablelens_heatmap(
-        attention_matrix=background_data,
-        x_labels=x_labels,
-        y_labels=y_labels,
-        title=title,
-        xlabel=xlabel,
-        ylabel=ylabel,
-        ax=ax,
-        cmap=background_cmap,
-        cbar=True,
-        linecolor=linecolor,
-        linewidths=linewidths,
-        vmin=vmin,
-        vmax=vmax,
-        norm=norm
-    )
-    
-    # 10) Add visualization based on display_mode
-    row_centers = plotter.row_centers
-    col_centers = plotter.col_centers
-    
-    # Scale for error circle size
-    max_err = error_vals.max() if np.any(error_vals) else 1e-9
-    
-    if display_mode == "half_pie":
-        # Similar to original half_pie_heatmap but with better epoch handling
-        start_angle = -45
-        total_span = 180
-        
-        # If we're using trend mode, we'll use 5 segments: min, first, mean, last, max
-        if epoch_aggregation == "trend":
-            n_segments = 5
-            slice_angle = total_span / n_segments
-            
-            for i in range(n_rows):
-                for j in range(n_cols):
-                    # Error circle
-                    err_val = error_vals[i, j]
-                    circle_frac = 0 if max_err < 1e-12 else (err_val / max_err)
-                    circle_radius = circle_frac * ring_radius
-                    
-                    cx, cy = col_centers[j], row_centers[i]
-                    
-                    grey_circle = Circle(
-                        (cx, cy),
-                        radius=circle_radius,
-                        facecolor="#D55E00",
-                        edgecolor="none",
-                        alpha=0.6,
-                        zorder=2
-                    )
-                    ax.add_patch(grey_circle)
-                    
-                    # Trend half-pie
-                    values = [
-                        trend_data["min"][i, j],
-                        trend_data["first"][i, j],
-                        trend_data["mean"][i, j],
-                        trend_data["last"][i, j],
-                        trend_data["max"][i, j]
-                    ]
-                    
-                    for slice_i, val in enumerate(values):
-                        wedge_color = plt.get_cmap(cmap)(norm(val))
-                        angle_1 = start_angle + slice_i * slice_angle
-                        angle_2 = start_angle + (slice_i + 1) * slice_angle
-                        
-                        wedge_patch = Wedge(
-                            center=(cx, cy),
-                            r=ring_radius,
-                            theta1=angle_1,
-                            theta2=angle_2,
-                            facecolor=wedge_color,
-                            edgecolor="none",
-                            zorder=3
-                        )
-                        ax.add_patch(wedge_patch)
-        else:
-            # Regular half-pie with binned or selected epochs
-            slice_angle = total_span / n_epochs
-            
-            for i in range(n_rows):
-                for j in range(n_cols):
-                    # Error circle
-                    err_val = error_vals[i, j]
-                    circle_frac = 0 if max_err < 1e-12 else (err_val / max_err)
-                    circle_radius = circle_frac * ring_radius
-                    
-                    cx, cy = col_centers[j], row_centers[i]
-                    
-                    grey_circle = Circle(
-                        (cx, cy),
-                        radius=circle_radius,
-                        facecolor="#D55E00",
-                        edgecolor="none",
-                        alpha=0.6,
-                        zorder=2
-                    )
-                    ax.add_patch(grey_circle)
-                    
-                    # Half-pie slices
-                    for slice_i in range(n_epochs):
-                        val = matrices[slice_i, i, j]
-                        wedge_color = plt.get_cmap(cmap)(norm(val))
-                        
-                        angle_1 = start_angle + slice_i * slice_angle
-                        angle_2 = start_angle + (slice_i + 1) * slice_angle
-                        
-                        wedge_patch = Wedge(
-                            center=(cx, cy),
-                            r=ring_radius,
-                            theta1=angle_1,
-                            theta2=angle_2,
-                            facecolor=wedge_color,
-                            edgecolor="none",
-                            zorder=3
-                        )
-                        ax.add_patch(wedge_patch)
-    
-    elif display_mode == "line_trend":
-        # Draw sparklines in each cell showing attention trend over time
-        cell_width = 1.0  # Normalized cell width
-        
-        for i in range(n_rows):
-            for j in range(n_cols):
-                cx, cy = col_centers[j], row_centers[i]
-                
-                # Error circle
-                err_val = error_vals[i, j]
-                circle_frac = 0 if max_err < 1e-12 else (err_val / max_err)
-                circle_radius = circle_frac * ring_radius / 2  # Smaller to not interfere with line
-                
-                grey_circle = Circle(
-                    (cx, cy),
-                    radius=circle_radius,
-                    facecolor="#D55E00",
-                    edgecolor="none",
-                    alpha=0.6,
-                    zorder=2
-                )
-                ax.add_patch(grey_circle)
-                
-                # Draw sparkline trend
-                if epoch_aggregation == "trend":
-                    # For trend mode, we connect min, first, mean, last, max with a line
-                    x_points = np.linspace(cx - ring_radius*0.8, cx + ring_radius*0.8, 5)
-                    values = [
-                        trend_data["min"][i, j],
-                        trend_data["first"][i, j],
-                        trend_data["mean"][i, j],
-                        trend_data["last"][i, j],
-                        trend_data["max"][i, j]
-                    ]
-                else:
-                    # Regular trend with all epochs
-                    x_points = np.linspace(cx - ring_radius*0.8, cx + ring_radius*0.8, n_epochs)
-                    values = matrices[:, i, j]
-                
-                # Normalize values to the cell height
-                y_min = vmin
-                y_max = vmax
-                y_range = y_max - y_min
-                norm_values = [(v - y_min) / y_range if y_range > 0 else 0.5 for v in values]
-                
-                # Convert to cell coordinates
-                y_points = [cy - ring_radius*0.8 + norm_val * ring_radius*1.6 for norm_val in norm_values]
-                
-                # Create line segments
-                points = np.array([x_points, y_points]).T.reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                
-                # Color segments by their values
-                segment_colors = []
-                for k in range(len(values) - 1):
-                    val = (values[k] + values[k+1]) / 2
-                    segment_colors.append(plt.get_cmap(cmap)(norm(val)))
-                
-                # Create a LineCollection
-                lc = LineCollection(segments, colors=segment_colors, linewidth=2, zorder=3)
-                ax.add_collection(lc)
-                
-                # Add points
-                for x, y, val in zip(x_points, y_points, values):
-                    color = plt.get_cmap(cmap)(norm(val))
-                    ax.plot(x, y, 'o', color=color, markersize=4, zorder=4)
-    
-    elif display_mode == "heatmap_grid":
-        # Draw a small heatmap in each cell showing evolution over time
-        
-        for i in range(n_rows):
-            for j in range(n_cols):
-                cx, cy = col_centers[j], row_centers[i]
-                
-                # Extract time series for this cell
-                if epoch_aggregation == "trend":
-                    # For trend, we'll create a small 1x5 heatmap
-                    cell_data = np.array([
-                        trend_data["min"][i, j],
-                        trend_data["first"][i, j],
-                        trend_data["mean"][i, j],
-                        trend_data["last"][i, j],
-                        trend_data["max"][i, j]
-                    ]).reshape(1, 5)
-                    cell_width = 5
-                    cell_height = 1
-                else:
-                    # Regular matrices
-                    cell_data = matrices[:, i, j].reshape(1, -1)
-                    cell_width = n_epochs
-                    cell_height = 1
-                
-                # Calculate cell dimensions
-                width = ring_radius * 1.6
-                height = ring_radius * 0.6
-                
-                # Create a mini heatmap at this cell position
-                mini_extent = [
-                    cx - width/2, cx + width/2,
-                    cy - height/2, cy + height/2
-                ]
-                
-                im = ax.imshow(
-                    cell_data,
-                    extent=mini_extent,
-                    aspect='auto',
-                    origin='lower',
-                    cmap=cmap,
-        norm=norm,
-                    zorder=3
-                )
-    
-    # 11) Detect and highlight attention regions if requested
-    if region_detection:
-        regions = detect_attention_regions(mean_vals, threshold=region_threshold)
-        
-        for region in regions:
-            top, left, bottom, right = region
-            top_y, left_x = row_centers[top] - 0.5, col_centers[left] - 0.5
-            height = (row_centers[bottom] - row_centers[top]) + 1
-            width = (col_centers[right] - col_centers[left]) + 1
-            
-            rect = Rectangle(
-                (left_x, top_y), width, height,
-                linewidth=2, edgecolor='red', facecolor='none',
-                zorder=10
-            )
-            ax.add_patch(rect)
-    
-    # 12) Add a legend explaining the visualization
-    if display_mode == "half_pie":
-        if epoch_aggregation == "trend":
-            legend_elements = [
-                patches.Patch(facecolor='grey', edgecolor='none', alpha=0.6, label='Uncertainty (std)'),
-                Wedge((0, 0), 0.1, -45, -9, facecolor='grey', label='Min'),
-                Wedge((0, 0), 0.1, -9, 27, facecolor='grey', label='First'),
-                Wedge((0, 0), 0.1, 27, 63, facecolor='grey', label='Mean'),
-                Wedge((0, 0), 0.1, 63, 99, facecolor='grey', label='Last'),
-                Wedge((0, 0), 0.1, 99, 135, facecolor='grey', label='Max')
-            ]
-        else:
-            legend_title = "Epochs"
-            if epoch_aggregation == "bin":
-                legend_elements = [
-                    patches.Patch(facecolor='grey', edgecolor='none', alpha=0.6, label='Uncertainty (std)')
-                ]
-                for i, label in enumerate(epoch_info["bins"]):
-                    angle1 = -45 + i * slice_angle
-                    angle2 = -45 + (i+1) * slice_angle
-                    legend_elements.append(
-                        Wedge((0, 0), 0.1, angle1, angle2, facecolor='grey', label=f'Epochs {label}')
-                    )
-            else:  # "select"
-                legend_elements = [
-                    patches.Patch(facecolor='grey', edgecolor='none', alpha=0.6, label='Uncertainty (std)')
-                ]
-                for i, epoch_idx in enumerate(epoch_indices):
-                    angle1 = -45 + i * slice_angle
-                    angle2 = -45 + (i+1) * slice_angle
-                    legend_elements.append(
-                        Wedge((0, 0), 0.1, angle1, angle2, facecolor='grey', label=f'Epoch {epoch_idx}')
-                    )
-            
-        ax.legend(
-            handles=legend_elements,
-            title=legend_title if 'legend_title' in locals() else None,
-            loc='upper center',
-            bbox_to_anchor=(0.5, -0.05),
-            ncol=min(3, len(legend_elements))
-        )
-        
-    elif display_mode == "line_trend":
-        legend_elements = [
-            patches.Patch(facecolor='grey', edgecolor='none', alpha=0.6, label='Uncertainty (std)'),
-            Line2D([0], [0], color='grey', lw=2, label='Attention trend')
-        ]
-        ax.legend(
-            handles=legend_elements,
-            loc='upper center',
-            bbox_to_anchor=(0.5, -0.05),
-            ncol=2
-        )
-    
-    # 13) Save if requested
-    if save_path:
-        plt.tight_layout()
-        plt.savefig(save_path)
-        plt.close(fig)
-        print(f"Adaptive attention evolution heatmap saved to {save_path}")
-    else:
-        plt.tight_layout()
-    
-    return ax, selected_indices, epoch_info
-
-
-def select_important_tokens(matrices, tokens=None, max_tokens=30, method="importance", custom_indices=None):
-    """
-    Select important tokens from an attention matrix sequence.
-    
-    Parameters
-    ----------
-    matrices : np.ndarray
-        Attention matrices of shape (n_epochs, n_tokens, n_tokens)
-    tokens : list of str, optional
-        Token labels
-    max_tokens : int
-        Maximum number of tokens to select
-    method : str
-        Selection method: "importance" (most attended), "random", "first_last", "custom"
-    custom_indices : list of int, optional
-        Custom indices to use when method="custom"
-        
-    Returns
-    -------
-    list of int
-        Selected token indices
-    """
-    import numpy as np
-    import re
-    
-    n_epochs, n_tokens, _ = matrices.shape
-    
-    if method == "custom" and custom_indices is not None:
-        return [i for i in custom_indices if i < n_tokens][:max_tokens]
-    
-    if method == "random":
-        return np.random.choice(n_tokens, size=min(max_tokens, n_tokens), replace=False).tolist()
-    
-    if method == "first_last":
-        half = max_tokens // 2
-        first_half = list(range(min(half, n_tokens)))
-        last_half = list(range(max(0, n_tokens-half), n_tokens))
-        return first_half + last_half
-    
-    # Default: importance-based selection
-    # Calculate token importance based on attention patterns
-    token_importance = np.zeros(n_tokens)
-    
-    # Sum attention given and received across all epochs
-    for matrix in matrices:
-        token_importance += matrix.sum(axis=0)  # attention received
-        token_importance += matrix.sum(axis=1)  # attention given
-    
-    # Identify special tokens if token labels are provided
-    special_tokens_indices = []
-    if tokens is not None:
-        special_pattern = re.compile(r'^\[.*\]$|^<.*>$|^[.,!?;:"]$')
-        special_tokens_indices = [i for i, t in enumerate(tokens) if special_pattern.match(t)]
-    
-    # Always include special tokens
-    remaining_slots = max_tokens - len(special_tokens_indices)
-    
-    # For remaining slots, select most important non-special tokens
-    if remaining_slots > 0:
-        # Set importance of special tokens to -1 to exclude them from top selection
-        importance_for_sorting = token_importance.copy()
-        for idx in special_tokens_indices:
-            importance_for_sorting[idx] = -1
-            
-        # Get top tokens by importance
-        top_indices = np.argsort(-importance_for_sorting)[:remaining_slots]
-        
-        # Combine and sort all selected indices
-        selected = sorted(list(set(special_tokens_indices).union(set(top_indices))))
-        return selected[:max_tokens]
-    else:
-        # If we already have too many special tokens, just return those
-        return special_tokens_indices[:max_tokens]
-
-
-def detect_attention_regions(attention_matrix, threshold=0.8, min_size=2):
-    """
-    Detect rectangular regions of high attention in the matrix.
-    
-    Parameters
-    ----------
-    attention_matrix : np.ndarray
-        2D attention matrix
-    threshold : float
-        Threshold for high attention (0.0 to 1.0)
-    min_size : int
-        Minimum size (area) of regions to detect
-        
-    Returns
-    -------
-    list of tuples
-        List of (top, left, bottom, right) coordinates for each region
-    """
-    import numpy as np
-    
-    # Simple implementation based on thresholding
-    high_attention = attention_matrix > np.percentile(attention_matrix, threshold * 100)
-    
-    # Find connected components (this is a simplified approach)
-    n_rows, n_cols = attention_matrix.shape
-    visited = np.zeros_like(high_attention, dtype=bool)
-    regions = []
-    
-    for i in range(n_rows):
-        for j in range(n_cols):
-            if high_attention[i, j] and not visited[i, j]:
-                # Found a new region, perform region growing
-                top, left, bottom, right = i, j, i, j
-                stack = [(i, j)]
-                visited[i, j] = True
-                
-                while stack:
-                    r, c = stack.pop()
-                    
-                    # Update region bounds
-                    top = min(top, r)
-                    left = min(left, c)
-                    bottom = max(bottom, r)
-                    right = max(right, c)
-                    
-                    # Check neighbors
-                    for dr, dc in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
-                        nr, nc = r + dr, c + dc
-                        if (0 <= nr < n_rows and 0 <= nc < n_cols and 
-                            high_attention[nr, nc] and not visited[nr, nc]):
-                            stack.append((nr, nc))
-                            visited[nr, nc] = True
-                
-                # Check if region is large enough
-                if (bottom - top + 1) * (right - left + 1) >= min_size:
-                    regions.append((top, left, bottom, right))
-    
-    return regions
-
-def selective_attention_evolution_heatmap(
-    matrices,
-    tokens=None,
-    x_labels=None,
-    y_labels=None,
-    title="Selective Attention Evolution",
-    xlabel="Tokens Attended to",
-    ylabel="Tokens Attending",
-    ax=None,
-    cmap="Blues",
-    gamma=1.5,
-    linecolor="white",
-    linewidths=1.0,
-    ring_radius=0.45,
-    save_path=None,
-    enlarged_size=1.8,        # Factor by which to enlarge important cells
-    top_percent=15,           # Percentage of cells to enlarge (cells with highest mean attention)
-    min_top_cells=5,          # Minimum number of cells to enlarge
-    max_top_cells=15,         # Maximum number of cells to enlarge
-    use_std_error=False,      # If True, use standard error instead of standard deviation
-    max_epochs_to_show=5,     # Maximum number of epochs to show in trends (for epochs > max_epochs_to_show)
-    region_detection=False,   # Whether to detect and highlight attention regions
-    region_threshold=0.8      # Threshold for region detection
-):
-    """
-    Creates a selective attention evolution heatmap that enlarges important cells and 
-    shows trends only in those enlarged cells.
-    
-    Parameters
-    ----------
-    matrices : list or np.ndarray
-        A list of attention matrices or a single 3D array of shape (n_epochs, n_rows, n_cols)
-    tokens : list of str, optional
-        The token labels corresponding to the matrix rows/columns
-    x_labels : list of str, optional
-        Column labels. If None and tokens provided, will use tokens
-    y_labels : list of str, optional
-        Row labels. If None and tokens provided, will use tokens
-    title : str, optional
-        Plot title
-    xlabel : str
-        X-axis label
-    ylabel : str
-        Y-axis label
-    ax : matplotlib.axes.Axes, optional
-        Axes to plot on. If None, a new figure + axes is created
-    cmap : str or matplotlib.colors.Colormap
-        Colormap for visualization. Defaults to 'Blues'
-    gamma : float
-        Gamma value for the PowerNorm color scaling
-    linecolor : str
-        Color of grid lines in the heatmap
-    linewidths : float
-        Width of grid lines in the heatmap
-    ring_radius : float
-        Radius for the visualizations in each cell (as fraction of half-cell size)
-    save_path : str, optional
-        If provided, saves the figure to this path
-    enlarged_size : float
-        Factor by which to enlarge important cells
-    top_percent : float
-        Percentage of cells to enlarge (cells with highest mean attention)
-    min_top_cells : int
-        Minimum number of cells to enlarge
-    max_top_cells : int
-        Maximum number of cells to enlarge
-    use_std_error : bool
-        If True, uses standard error instead of standard deviation
-    max_epochs_to_show : int
-        Maximum number of epochs to show in evolution trends
-    region_detection : bool
-        Whether to detect and highlight attention regions
-    region_threshold : float
-        Threshold for region detection (0.0 to 1.0)
-        
-    Returns
-    -------
-    ax : matplotlib.axes.Axes
-        The axes containing the plot
-    top_cells : list of tuples
-        The (row, col) indices of cells that were enlarged
-    """
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import matplotlib.patches as patches
-    from matplotlib.patches import Wedge, Rectangle, Circle
-    from matplotlib.colors import PowerNorm
-    from matplotlib.collections import LineCollection
-    from matplotlib.lines import Line2D
-    import matplotlib.cm as cm
-    import re
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-    
-    # 1) Convert input to np.array (n_epochs, n_rows, n_cols)
-    matrices = np.array(matrices)
-    if matrices.ndim != 3:
-        raise ValueError(
-            f"Expected matrices to be a list or 3D array of shape (n_epochs, n_rows, n_cols). "
-            f"Got shape: {matrices.shape}"
-        )
-
-    n_epochs, n_rows, n_cols = matrices.shape
-    
-    # Handle token labels
-    if tokens is not None:
-        if len(tokens) != n_rows or len(tokens) != n_cols:
-            raise ValueError(f"Token list length ({len(tokens)}) doesn't match matrix dimensions ({n_rows}x{n_cols})")
-        if x_labels is None:
-            x_labels = tokens
-        if y_labels is None:
-            y_labels = tokens
-    
-    if x_labels is None:
-        x_labels = [f"X{j}" for j in range(n_cols)]
-    if y_labels is None:
-        y_labels = [f"Y{i}" for i in range(n_rows)]
-    
-    # 2) Calculate mean attention across all epochs
-    mean_vals = np.mean(matrices, axis=0)
-    
-    # 3) Identify important cells to be enlarged
-    flat_mean = mean_vals.flatten()
-    num_cells = len(flat_mean)
-    num_top_cells = max(min_top_cells, min(max_top_cells, int(num_cells * top_percent / 100)))
-    
-    # Get indices of top cells
-    top_flat_indices = np.argsort(-flat_mean)[:num_top_cells]
-    top_cells = [(idx // n_cols, idx % n_cols) for idx in top_flat_indices]
-    
-    # 4) Create column widths and row heights arrays
-    default_width = 1.0
-    default_height = 1.0
-    column_widths = [default_width] * n_cols
-    row_heights = [default_height] * n_rows
-    
-    # Set enlarged sizes for important cells
-    for row_idx, col_idx in top_cells:
-        row_heights[row_idx] = enlarged_size
-        column_widths[col_idx] = enlarged_size
-    
-    # 5) Create or use existing axes
-    if ax is None:
-        fig_scale = max(1.0, n_rows / 10)  # Scale figure size with token count
-        fig, ax = plt.subplots(figsize=(8 * fig_scale, 8 * fig_scale))
-    else:
-        fig = ax.figure
-    
-    # 6) Compute global min/max for color scale
-    all_values = matrices.flatten()
-    vmin, vmax = all_values.min(), all_values.max()
-    if np.isclose(vmin, vmax):
-        vmax = vmin + 1e-9
-    
-    # 7) Create PowerNorm for color scaling
-    norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
-    
-    # 8) Create background heatmap with only mean values
-    ax, plotter = create_tablelens_heatmap(
-        attention_matrix=mean_vals,
-        x_labels=x_labels,
-        y_labels=y_labels,
-        title=title,
-        xlabel=xlabel,
-        ylabel=ylabel,
-        ax=ax,
-        cmap=cmap,
-        column_widths=column_widths,
-        row_heights=row_heights,
-        cbar=True,
-        linecolor=linecolor,
-        linewidths=linewidths,
-        vmin=vmin,
-        vmax=vmax,
-        norm=norm,
-        top_cells=top_cells
-    )
-    
-    # 9) Calculate cell centers using heatmap positions instead of plotter.get_cellsizes()
-    # Get the heatmap data from the first AxesImage in the axes
-    heatmap_obj = None
-    for child in ax.get_children():
-        if isinstance(child, plt.matplotlib.image.AxesImage):
-            heatmap_obj = child
-            break
-            
-    if heatmap_obj is None:
-        raise ValueError("Could not find heatmap image in axes")
-    
-    # Get the extent of the heatmap
-    extent = heatmap_obj.get_extent()
-    x_min, x_max, y_min, y_max = extent
-    
-    # Calculate the width and height of cells
-    # This handles the case where cells have different sizes due to enlargement
-    x_positions = [x_min]
-    current_pos = x_min
-    for width in column_widths:
-        current_pos += width
-        x_positions.append(current_pos)
-    
-    y_positions = [y_min]
-    current_pos = y_min
-    for height in row_heights[::-1]:  # Reverse because y axis starts from bottom
-        current_pos += height
-        y_positions.append(current_pos)
-    
-    y_positions = y_positions[::-1]  # Reverse back to match matrix row order
-    
-    # Calculate centers of each cell
-    col_centers = [(x_positions[i] + x_positions[i+1]) / 2 for i in range(n_cols)]
-    row_centers = [(y_positions[i] + y_positions[i+1]) / 2 for i in range(n_rows)]
-    
-    # 10) Handle epoch aggregation if there are too many epochs
-    if n_epochs > max_epochs_to_show:
-        # Split epochs into equal parts and average each part
-        part_size = n_epochs // max_epochs_to_show
-        remaining = n_epochs % max_epochs_to_show
-        
-        parts = []
-        start_idx = 0
-        
-        for i in range(max_epochs_to_show):
-            # Distribute remaining elements to make parts as equal as possible
-            current_part_size = part_size + (1 if i < remaining else 0)
-            end_idx = start_idx + current_part_size
-            
-            # Average the matrices in this part
-            part_avg = np.mean(matrices[start_idx:end_idx], axis=0)
-            parts.append(part_avg)
-            
-            start_idx = end_idx
-        
-        # Replace original matrices with aggregated parts
-        aggregated_matrices = np.array(parts)
-        epoch_labels = [f"Epochs {i*part_size}-{min((i+1)*part_size-1, n_epochs-1)}" for i in range(max_epochs_to_show)]
-    else:
-        aggregated_matrices = matrices
-        epoch_labels = [f"Epoch {i}" for i in range(n_epochs)]
-    
-    n_parts = len(aggregated_matrices)
-    
-    # 11) Calculate std/error values for uncertainty visualization
-    std_vals = np.std(matrices, axis=0)
-    if use_std_error:
-        error_vals = std_vals / np.sqrt(n_epochs)
-    else:
-        error_vals = std_vals
-    
-    max_err = np.max(error_vals)
-    
-    # 12) Add evolution trends to enlarged cells
-    slice_angle = 180 / n_parts  # For half-pie visualization
-    
-    for i in range(n_rows):
-        for j in range(n_cols):
-            # Only add trends to enlarged cells
-            if (i, j) in top_cells:
-                cx, cy = col_centers[j], row_centers[i]
-                
-                # Draw uncertainty circle
-                err_val = error_vals[i, j]
-                circle_radius = ring_radius * (err_val / max_err) if max_err > 0 else 0
-                
-                grey_circle = Circle(
-                    (cx, cy),
-                    radius=circle_radius,
-                    facecolor="grey",
-                    edgecolor="none",
-                    alpha=0.6,
-                    zorder=1
-                )
-                ax.add_patch(grey_circle)
-                
-                # Add half-pie evolution visualization
-                for k in range(n_parts):
-                    val = aggregated_matrices[k, i, j]
-                    color = plt.get_cmap(cmap)(norm(val))
-                    
-                    angle1 = -45 + k * slice_angle
-                    angle2 = -45 + (k + 1) * slice_angle
-                    
-                    wedge = Wedge(
-                        (cx, cy),
-                        ring_radius,
-                        angle1,
-                        angle2,
-                        facecolor=color,
-                        edgecolor=linecolor,
-                        linewidth=0.5,
-                        zorder=2
-                    )
-                    ax.add_patch(wedge)
-                    
-                # Add sparkline if desired
-                # Create points for the line
-                x_points = np.linspace(cx - ring_radius*0.8, cx + ring_radius*0.8, n_parts)
-                values = aggregated_matrices[:, i, j]
-                
-                # Normalize values to the cell height
-                y_range = vmax - vmin
-                norm_values = [(v - vmin) / y_range if y_range > 0 else 0.5 for v in values]
-                
-                # Convert to cell coordinates
-                y_points = [cy - ring_radius*0.4 + norm_val * ring_radius*0.8 for norm_val in norm_values]
-                
-                # Create line segments
-                points = np.array([x_points, y_points]).T.reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                
-                # Color segments by their values
-                segment_colors = []
-                for k in range(len(values) - 1):
-                    val = (values[k] + values[k+1]) / 2
-                    segment_colors.append(plt.get_cmap(cmap)(norm(val)))
-                
-                # Create a LineCollection
-                lc = LineCollection(segments, colors=segment_colors, linewidth=2, zorder=3)
-                ax.add_collection(lc)
-                
-                # Add points
-                for x, y, val in zip(x_points, y_points, values):
-                    color = plt.get_cmap(cmap)(norm(val))
-                    ax.plot(x, y, 'o', color=color, markersize=4, zorder=4)
-    
-    # 13) Detect and highlight attention regions if requested
-    if region_detection:
-        regions = detect_attention_regions(mean_vals, threshold=region_threshold)
-        
-        for region in regions:
-            top, left, bottom, right = region
-            # Convert region to plot coordinates
-            rect_x = col_centers[left] - 0.5
-            rect_y = row_centers[top] - 0.5
-            rect_width = col_centers[right] - col_centers[left] + 1
-            rect_height = row_centers[bottom] - row_centers[top] + 1
-            
-            rect = Rectangle(
-                (rect_x, rect_y), rect_width, rect_height,
-                linewidth=2, edgecolor='red', facecolor='none',
-                zorder=10
-            )
-            ax.add_patch(rect)
-    
-    # 14) Add a legend
-    legend_elements = [
-        patches.Patch(facecolor='grey', edgecolor='none', alpha=0.6, label='Uncertainty (std)'),
-        Line2D([0], [0], color='grey', lw=2, label='Attention trend')
-    ]
-    
-    for i in range(min(5, n_parts)):
-        angle1 = -45 + i * slice_angle
-        angle2 = -45 + (i+1) * slice_angle
-        legend_elements.append(
-            Wedge((0, 0), 0.1, angle1, angle2, facecolor='grey', label=epoch_labels[i])
-        )
-    
-    ax.legend(
-        handles=legend_elements,
-        title="Epochs",
-        loc='upper center',
-        bbox_to_anchor=(0.5, -0.05),
-        ncol=min(3, len(legend_elements))
-    )
-    
-    # 15) Save if path provided
-    if save_path:
-        plt.tight_layout()
-        plt.savefig(save_path, bbox_inches='tight')
-        print(f"Figure saved to {save_path}")
-    
-    return ax, top_cells
-
-def visualize_attention_evolution(attentions_over_time, tokens, layer, head,
-                                 top_n=5, enlarged_size=1.8, gamma=1.5,
-                                 title="Attention Evolution Over Time", 
-                                 xlabel="Tokens Attended to", 
-                                 ylabel="Tokens Attending",
-                                 max_epochs_to_show=5,
-                                 use_std_error=False,
-                                 ring_radius=0.45,
-                                 cmap="Blues",
-                                 linecolor="white",
-                                 linewidths=1.0,
-                                 auto_detect_regions=False,
-                                 region_threshold=0.8,
-                                 save_path=None):
-    """
-    Visualizes the evolution of attention scores across training steps/epochs.
-    
-    Parameters:
-    - attentions_over_time: List of attention matrices from different epochs/training steps.
-                           Shape should be [n_epochs, n_layers, n_heads, n_tokens, n_tokens]
-                           or [n_epochs, n_tokens, n_tokens] if layer and head are already selected.
-    - tokens: List of token labels to display on the heatmaps.
-    - layer: The layer number of the attention to visualize.
-    - head: The head number of the attention to visualize.
-    - top_n: The number or percentage of top cells to enlarge and show evolution trends.
-            If < 1, treated as percentage (e.g., 0.1 = top 10%).
-            If >= 1, treated as absolute number of cells.
-    - enlarged_size: Factor by which to enlarge the top cells.
-    - gamma: Gamma value for the power normalization of the colormap.
-    - title: Title for the visualization.
-    - xlabel: Label for the x-axis.
-    - ylabel: Label for the y-axis.
-    - max_epochs_to_show: Maximum number of epochs to display in evolution trends.
-                         If n_epochs > max_epochs_to_show, epochs will be aggregated.
-    - use_std_error: If True, uses standard error (std/sqrt(n)) instead of standard deviation.
-    - ring_radius: Radius for the evolution visualizations (as fraction of cell size).
-    - cmap: Colormap for the heatmap and trends.
-    - linecolor: Color of grid lines in the heatmap.
-    - linewidths: Width of grid lines in the heatmap.
-    - auto_detect_regions: If True, automatically detect and highlight attention regions.
-    - region_threshold: Threshold for region detection (0.0 to 1.0).
-    - save_path: If provided, saves the figure to this path.
-    
     Returns:
-    - ax: The matplotlib axes containing the visualization.
-    - top_cells: The (row, col) indices of cells that were enlarged.
+        matplotlib.axes.Axes: The axes containing the visualization
     """
-    import matplotlib.pyplot as plt
     import numpy as np
-    from matplotlib.patches import Wedge, Circle
-    from matplotlib.collections import LineCollection
+    import matplotlib.pyplot as plt
+    import matplotlib.colors as mcolors
+    from matplotlib.colors import PowerNorm
     from matplotlib.lines import Line2D
-    import matplotlib.patches as patches
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    import torch
     
-    # 1) Extract attention matrices for the specified layer and head
+    # Process the attention matrices
     matrices = []
     for epoch_attn in attentions_over_time:
-        # Handle different input formats
-        if isinstance(epoch_attn, list):  # List of layer attentions
-            # Extract attention for specific layer and head
-            layer_attn = epoch_attn[layer].squeeze(0)
-            head_attn = layer_attn[head]
-        elif epoch_attn.ndim == 3:  # Already layer and head specific
-            head_attn = epoch_attn
-        elif epoch_attn.ndim >= 4:  # Shape includes layers and heads
-            head_attn = epoch_attn[layer][head]
+        # Check if we're dealing with a torch tensor or numpy array
+        if torch.is_tensor(epoch_attn):
+            # Process torch tensor
+            attn = epoch_attn
+            
+            # Extract layer and head if needed
+            if layer is not None and head is not None:
+                # Try to handle different tensor shapes
+                ndim = attn.dim()
+                if ndim >= 4:  # [batch/epochs, layers, heads, seq, seq]
+                    attn = attn[0] if ndim > 4 else attn  # Remove batch dim if present
+                    attn = attn[layer][head]
+                elif ndim == 3:  # [layers, heads, seq, seq] or [heads, seq, seq]
+                    if attn.size(0) > 1 and layer is not None:
+                        attn = attn[layer][head]
+                    else:
+                        attn = attn[head]
+            
+            # Convert to numpy
+            attn = attn.detach().cpu().numpy()
         else:
-            raise ValueError(f"Unexpected attention shape: {epoch_attn.shape}")
-        
-        # Convert to numpy if it's a tensor
-        if torch.is_tensor(head_attn):
-            head_attn = head_attn.detach().cpu().numpy()
+            # Process numpy array
+            attn = epoch_attn
             
-        matrices.append(head_attn)
-    
-    # Convert to 3D array [n_epochs, n_tokens, n_tokens]
-    matrices = np.array(matrices)
-    n_epochs, n_rows, n_cols = matrices.shape
-    
-    # 2) Set up labels
-    if tokens is None:
-        x_labels = [f"Token {j}" for j in range(n_cols)]
-        y_labels = [f"Token {i}" for i in range(n_rows)]
-    else:
-        x_labels = tokens
-        y_labels = tokens
-    
-    # 3) Calculate mean attention across all epochs
-    mean_vals = np.mean(matrices, axis=0)
-    
-    # 4) Identify top cells to enlarge
-    if top_n < 1:  # Treat as percentage
-        top_percent = top_n * 100
-        num_cells = mean_vals.size
-        num_top_cells = max(5, min(15, int(num_cells * top_percent)))
-    else:  # Treat as absolute number
-        num_top_cells = int(top_n)
-    
-    # Find the top N cells by mean attention
-    flat_mean = mean_vals.flatten()
-    top_flat_indices = np.argsort(-flat_mean)[:num_top_cells]
-    top_cells = [(idx // n_cols, idx % n_cols) for idx in top_flat_indices]
-    
-    # 5) Set up column widths and row heights for enlarged cells
-    column_widths = [1.0] * n_cols
-    row_heights = [1.0] * n_rows
-    
-    for row_idx, col_idx in top_cells:
-        row_heights[row_idx] = enlarged_size
-        column_widths[col_idx] = enlarged_size
-    
-    # 6) Create figure and axes
-    fig_scale = max(1.0, n_rows / 10)  # Scale figure size with token count
-    fig, ax = plt.subplots(figsize=(8 * fig_scale, 8 * fig_scale))
-    
-    # 7) Compute global min/max for color scale
-    all_values = matrices.flatten()
-    vmin, vmax = all_values.min(), all_values.max()
-    if np.isclose(vmin, vmax):
-        vmax = vmin + 1e-9
-    
-    # 8) Create PowerNorm for color scaling
-    norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
-    
-    # 9) Create background heatmap with mean values
-    ax, plotter = create_tablelens_heatmap(
-        attention_matrix=mean_vals,
-        x_labels=x_labels,
-        y_labels=y_labels,
-        title=title,
-        xlabel=xlabel,
-        ylabel=ylabel,
-        ax=ax,
-        cmap=cmap,
-        column_widths=column_widths,
-        row_heights=row_heights,
-        cbar=True,
-        linecolor=linecolor,
-        linewidths=linewidths,
-        vmin=vmin,
-        vmax=vmax,
-        norm=norm,
-        top_cells=top_cells
-    )
-    
-    # 10) Calculate cell centers
-    # Get the heatmap data from the first AxesImage in the axes
-    heatmap_obj = None
-    for child in ax.get_children():
-        if isinstance(child, plt.matplotlib.image.AxesImage):
-            heatmap_obj = child
-            break
-            
-    if heatmap_obj is None:
-        raise ValueError("Could not find heatmap image in axes")
-    
-    # Get the extent of the heatmap
-    extent = heatmap_obj.get_extent()
-    x_min, x_max, y_min, y_max = extent
-    
-    # Calculate positions for cell boundaries
-    x_positions = [x_min]
-    current_pos = x_min
-    for width in column_widths:
-        current_pos += width
-        x_positions.append(current_pos)
-    
-    y_positions = [y_min]
-    current_pos = y_min
-    for height in row_heights[::-1]:  # Reverse because y axis starts from bottom
-        current_pos += height
-        y_positions.append(current_pos)
-    
-    y_positions = y_positions[::-1]  # Reverse back to match matrix row order
-    
-    # Calculate centers of each cell
-    col_centers = [(x_positions[i] + x_positions[i+1]) / 2 for i in range(n_cols)]
-    row_centers = [(y_positions[i] + y_positions[i+1]) / 2 for i in range(n_rows)]
-    
-    # 11) Handle epoch aggregation if there are too many epochs
-    if n_epochs > max_epochs_to_show:
-        # Split epochs into equal parts and average each part
-        part_size = n_epochs // max_epochs_to_show
-        remaining = n_epochs % max_epochs_to_show
+            # Extract layer and head if needed
+            if layer is not None and head is not None:
+                ndim = attn.ndim
+                if ndim >= 4:
+                    attn = attn[0] if ndim > 4 else attn  # Remove batch dim if present
+                    attn = attn[layer][head]
+                elif ndim == 3:
+                    if attn.shape[0] > 1 and layer is not None:
+                        attn = attn[layer][head]
+                    else:
+                        attn = attn[head]
         
-        parts = []
-        start_idx = 0
+        matrices.append(attn)
+    
+    # Stack matrices for easier processing
+    attention_stack = np.stack(matrices)  # [n_epochs, n_tokens, n_tokens]
+    n_epochs, n_tokens, _ = attention_stack.shape
+    
+    # Compute average attention for background color
+    avg_attention = np.mean(attention_stack, axis=0)
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Create background heatmap with average attention
+    norm = PowerNorm(gamma=gamma)
+    im = ax.imshow(avg_attention, cmap=cmap, alpha=background_alpha, norm=norm)
+    
+    # Add grid lines
+    ax.set_xticks(np.arange(-.5, n_tokens, 1), minor=True)
+    ax.set_yticks(np.arange(-.5, n_tokens, 1), minor=True)
+    ax.grid(which="minor", color=grid_color, linestyle='-', linewidth=grid_linewidth)
+    ax.tick_params(which="minor", size=0)
+    
+    # Add sparklines in each cell
+    cell_height = 1.0
+    cell_width = 1.0
+    
+    # Function to interpolate between two colors
+    def get_sparkline_color(cell_intensity):
+        """Return either dark blue or white based on background intensity relative to color bar midpoint."""
+        # Use simple linear normalization for determining the threshold
+        min_val = avg_attention.min()
+        max_val = avg_attention.max()
         
-        for i in range(max_epochs_to_show):
-            # Distribute remaining elements to make parts as equal as possible
-            current_part_size = part_size + (1 if i < remaining else 0)
-            end_idx = start_idx + current_part_size
-            
-            # Average the matrices in this part
-            part_avg = np.mean(matrices[start_idx:end_idx], axis=0)
-            parts.append(part_avg)
-            
-            start_idx = end_idx
+        # Calculate the middle of the color range (with PowerNorm influence)
+        norm_tmp = PowerNorm(gamma=1.5, vmin=min_val, vmax=max_val)
+        middle_value = norm_tmp.inverse(0.5)
         
-        # Replace original matrices with aggregated parts
-        aggregated_matrices = np.array(parts)
-        epoch_labels = [f"Epochs {i*part_size}-{min((i+1)*part_size-1, n_epochs-1)}" for i in range(max_epochs_to_show)]
-    else:
-        aggregated_matrices = matrices
-        epoch_labels = [f"Epoch {i}" for i in range(n_epochs)]
+        # Compare the raw attention value to the middle value
+        return sparkline_color_light if cell_intensity > middle_value else sparkline_color_dark
     
-    n_parts = len(aggregated_matrices)
+    # For global normalization (if not normalizing per cell), find global min/max
+    if not normalize_sparklines:
+        global_min = attention_stack.min()
+        global_max = attention_stack.max()
     
-    # 12) Calculate std/error values for uncertainty visualization
-    std_vals = np.std(matrices, axis=0)
-    if use_std_error:
-        error_vals = std_vals / np.sqrt(n_epochs)
-    else:
-        error_vals = std_vals
-    
-    max_err = np.max(error_vals)
-    
-    # 13) Add evolution trends to enlarged cells
-    slice_angle = 180 / n_parts  # For half-pie visualization
-    
-    for i in range(n_rows):
-        for j in range(n_cols):
-            # Only add trends to enlarged cells
-            if (i, j) in top_cells:
-                cx, cy = col_centers[j], row_centers[i]
-                
-                # Draw uncertainty circle
-                err_val = error_vals[i, j]
-                circle_radius = ring_radius * (err_val / max_err) if max_err > 0 else 0
-                
-                grey_circle = Circle(
-                    (cx, cy),
-                    radius=circle_radius,
-                    facecolor="grey",
-                    edgecolor="none",
-                    alpha=0.6,
-                    zorder=1
-                )
-                ax.add_patch(grey_circle)
-                
-                # Add half-pie evolution visualization
-                for k in range(n_parts):
-                    val = aggregated_matrices[k, i, j]
-                    color = plt.get_cmap(cmap)(norm(val))
-                    
-                    angle1 = -45 + k * slice_angle
-                    angle2 = -45 + (k + 1) * slice_angle
-                    
-                    wedge = Wedge(
-                        (cx, cy),
-                        ring_radius,
-                        angle1,
-                        angle2,
-                        facecolor=color,
-                        edgecolor=linecolor,
-                        linewidth=0.5,
-                        zorder=2
-                    )
-                    ax.add_patch(wedge)
-                    
-                # Add trend line
-                x_points = np.linspace(cx - ring_radius*0.8, cx + ring_radius*0.8, n_parts)
-                values = aggregated_matrices[:, i, j]
-                
-                # Normalize values to the cell height
-                y_range = vmax - vmin
-                norm_values = [(v - vmin) / y_range if y_range > 0 else 0.5 for v in values]
-                
-                # Convert to cell coordinates
-                y_points = [cy - ring_radius*0.4 + norm_val * ring_radius*0.8 for norm_val in norm_values]
-                
-                # Create line segments
-                points = np.array([x_points, y_points]).T.reshape(-1, 1, 2)
-                segments = np.concatenate([points[:-1], points[1:]], axis=1)
-                
-                # Color segments by their values
-                segment_colors = []
-                for k in range(len(values) - 1):
-                    val = (values[k] + values[k+1]) / 2
-                    segment_colors.append(plt.get_cmap(cmap)(norm(val)))
-                
-                # Create a LineCollection
-                lc = LineCollection(segments, colors=segment_colors, linewidth=2, zorder=3)
-                ax.add_collection(lc)
-                
-                # Add points
-                for x, y, val in zip(x_points, y_points, values):
-                    color = plt.get_cmap(cmap)(norm(val))
-                    ax.plot(x, y, 'o', color=color, markersize=4, zorder=4)
-    
-    # 14) Add region detection if requested
-    if auto_detect_regions:
-        regions = detect_attention_regions(mean_vals, threshold=region_threshold)
-        
-        for region in regions:
-            top, left, bottom, right = region
-            # Convert region to plot coordinates
-            rect_x = x_positions[left]
-            rect_y = y_positions[top]
-            rect_width = x_positions[right+1] - x_positions[left]
-            rect_height = y_positions[bottom+1] - y_positions[top]
+    for i in range(n_tokens):
+        for j in range(n_tokens):
+            # Get time series for this cell
+            values = attention_stack[:, i, j]
             
-            rect = patches.Rectangle(
-                (rect_x, rect_y), rect_width, rect_height,
-                linewidth=2, edgecolor='red', facecolor='none',
-                zorder=10
-            )
-            ax.add_patch(rect)
+            # Normalize based on user preference
+            if normalize_sparklines:
+                # Per-cell normalization (original behavior)
+                min_val, max_val = values.min(), values.max()
+                if max_val > min_val:  # Avoid division by zero
+                    norm_values = (values - min_val) / (max_val - min_val)
+                else:
+                    norm_values = np.ones_like(values) * 0.5
+            else:
+                # Global normalization (all cells share same y-axis scale)
+                if global_max > global_min:  # Avoid division by zero
+                    norm_values = (values - global_min) / (global_max - global_min)
+                else:
+                    norm_values = np.ones_like(values) * 0.5
+            
+            # Create x-coordinates for the time steps
+            x = np.linspace(j - cell_width/2 + 0.1, j + cell_width/2 - 0.1, n_epochs)
+            
+            # Calculate y-coordinates: invert normalized values to plot within cell
+            y = i + (1 - norm_values) * cell_height * 0.8 - cell_height * 0.4
+            
+            # Determine color based on background intensity
+            cell_intensity = avg_attention[i, j]
+            sparkline_color = get_sparkline_color(cell_intensity)
+            
+            # Plot the sparkline
+            ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
     
-    # 15) Add a legend
+    # Set token labels if provided
+    if tokens is not None:
+        if len(tokens) != n_tokens:
+            print(f"Warning: tokens list length ({len(tokens)}) doesn't match matrix dimensions ({n_tokens})")
+            # Truncate or pad tokens list as needed
+            tokens = tokens[:n_tokens] if len(tokens) > n_tokens else tokens + [""] * (n_tokens - len(tokens))
+        
+        # Create formatted labels (escape special chars, etc.)
+        formatted_tokens = []
+        for token in tokens:
+            if token.startswith("<") and token.endswith(">"):
+                token = r"$\bf{" + token + "}$"  # Make special tokens bold
+            formatted_tokens.append(token)
+        
+        # Set labels
+        ax.set_xticks(np.arange(n_tokens))
+        ax.set_yticks(np.arange(n_tokens))
+        ax.set_xticklabels(formatted_tokens)
+        ax.set_yticklabels(formatted_tokens)
+    
+    # Set title and labels
+    ax.set_title(title, fontsize=title_fontsize)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.xaxis.set_label_position('top')
+    ax.xaxis.tick_top()
+
+    for label in ax.get_xticklabels():
+        label.set_rotation(45)
+    
+    # Add colorbar for the background
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = plt.colorbar(im, cax=cax)
+    cbar.outline.set_visible(False)
+    cbar.set_label("Average Attention")
+    
+    # Update legend - show both dark and light sparkline colors
     legend_elements = [
-        patches.Patch(facecolor='grey', edgecolor='none', alpha=0.6, label='Uncertainty'),
-        Line2D([0], [0], color='grey', lw=2, label='Attention trend')
+        Line2D([0], [0], color=sparkline_color_dark, lw=sparkline_linewidth, 
+               label="Trend (low attention)"),
+        Line2D([0], [0], color=sparkline_color_light, lw=sparkline_linewidth, 
+               label="Trend (high attention)")
     ]
     
-    for i in range(min(5, n_parts)):
-        angle1 = -45 + i * slice_angle
-        angle2 = -45 + (i+1) * slice_angle
-        legend_elements.append(
-            Wedge((0, 0), 0.1, angle1, angle2, facecolor='grey', label=epoch_labels[i])
-        )
+    ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.05, -0.1))
     
-    ax.legend(
-        handles=legend_elements,
-        title="Epochs",
-        loc='upper center',
-        bbox_to_anchor=(0.5, -0.05),
-        ncol=min(3, len(legend_elements))
-    )
+    plt.tight_layout()
     
-    # 16) Save if path provided
+    # Save if requested
     if save_path:
-        plt.tight_layout()
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
         print(f"Figure saved to {save_path}")
     
-    return ax, top_cells
-
+    return ax
