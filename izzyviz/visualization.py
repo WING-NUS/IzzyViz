@@ -4,12 +4,13 @@ from .my_seaborn import heatmap
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.colors import PowerNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import patches  # Import patches to draw the rectangle
 from .utility import find_non_overlapping_locally_maximal_rectangles
 from matplotlib.patches import Wedge
+from matplotlib.lines import Line2D
+from matplotlib.collections import PatchCollection
 
 
 # Define a function to make special tokens bold
@@ -21,8 +22,8 @@ def bold_special_tokens(label):
 
 def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel, ylabel, ax, cmap='Blues',
                              column_widths=None, row_heights=None, top_cells=None, vmin=None,
-                             vmax=None, norm=None, gamma=2.0, left_top_cells=None, right_bottom_cells=None, linecolor='white', linewidths=1.0,
-                             cbar=True):
+                             vmax=None, norm=None, gamma=1.5, left_top_cells=None, right_bottom_cells=None, linecolor='white', linewidths=1.0,
+                             cbar=True, show_scores=True, background_color=True, lean_more=False):
     """
     Creates a heatmap with variable cell sizes and annotations for top cells.
     Returns both the axis and the plotter object for further customization.
@@ -35,14 +36,17 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
 
     # print("data: ", data.shape)
 
-    # Create annot_data for annotations
-    annot_data = np.empty_like(data, dtype=object)
-    annot_data[:] = ''  # Initialize all cells to empty strings
+    if show_scores:
+        # Create annot_data for annotations
+        annot_data = np.empty_like(data, dtype=object)
+        annot_data[:] = ''  # Initialize all cells to empty strings
 
-    if top_cells is not None:
-        for (row_index, col_index) in top_cells:
-            value = data[row_index, col_index]
-            annot_data[row_index, col_index] = f"{value:.3f}"
+        if top_cells is not None:
+            for (row_index, col_index) in top_cells:
+                value = data[row_index, col_index]
+                annot_data[row_index, col_index] = f"{value:.3f}"
+    else:
+        annot_data = None
 
     if vmin is None:
         vmin = data.min()
@@ -118,7 +122,10 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     ax.xaxis.tick_top()
 
     for label in ax.get_xticklabels():
-        label.set_rotation(45)
+        if lean_more:
+            label.set_rotation(90)
+        else:
+            label.set_rotation(45)
 
     for label in ax.get_yticklabels():
         label.set_rotation(0)
@@ -137,12 +144,12 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
 
         # Adjust x tick labels
         for idx, label in enumerate(x_ticklabels):
-            if idx in x_indices:
+            if idx in x_indices and background_color:
                 label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
 
         # Adjust y tick labels without inversion
         for row_index in y_indices:
-            if row_index < len(y_ticklabels):
+            if row_index < len(y_ticklabels) and background_color:
                 label = y_ticklabels[row_index]
                 label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
     
@@ -203,10 +210,29 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
 
 
 
-def visualize_attention_self_attention(attentions, tokens, layer, head, question_end=None,
-                                top_n=3, enlarged_size=1.8, gamma=1.5, mode='self_attention',
-                                plot_titles=None, left_top_cells=None, right_bottom_cells=None,
-                                auto_detect_regions=False, save_path=None):
+def visualize_attention_self_attention(
+    attentions, 
+    tokens, 
+    layer, 
+    head,
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
+    question_end=None,
+    top_n=3, 
+    enlarged_size=1.8, 
+    gamma=1.5, 
+    mode='self_attention',
+    plot_titles=None, 
+    left_top_cells=None, 
+    right_bottom_cells=None,
+    auto_detect_regions=False, 
+    save_path=None,
+    length_threshold=50,
+    if_interval=False,
+    if_top_cells=True,
+    interval=10,
+    show_scores_in_enlarged_cells=True  
+):
     """
     Visualizes attention matrices for encoder-only and decoder-only models.
     
@@ -216,6 +242,8 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
     - layer: The layer number of the attention to visualize.
     - head: The head number of the attention to visualize.
     - question_end: The index where the first sentence ends in the token list (used in question-context modes).
+    - xlabel: Label for the x-axis.
+    - ylabel: Label for the y-axis.
     - top_n: The number of top attention scores to highlight.
     - enlarged_size: Factor by which to enlarge the top cells.
     - gamma: Gamma value for the power normalization of the colormap.
@@ -225,6 +253,12 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
     - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
     - auto_detect_regions: If True, automatically detect locally maximal attention regions.
                           This will override any manually specified left_top_cells and right_bottom_cells.
+    - if_interval: If True, show labels at regular intervals.
+    - if_top_cells: If True, show labels for tokens associated with important attention cells.
+    - length_threshold: Maximum token count before switching to sparse labeling
+    - interval: Show a label every N tokens in sparse mode
+    - show_scores_in_enlarged_cells: Whether to display attention scores in enlarged cells
+                                    (automatically disabled in sparse labeling mode)
     """
     # Removes the first dimension if it is 1 (typically the batch size for a single input).
     attn = attentions[layer].squeeze(0)[head]
@@ -306,8 +340,8 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
                 x_labels,
                 y_labels,
                 title,
-                "Tokens Attended to",
-                "Tokens Attending",
+                xlabel,
+                ylabel,
                 axes[i],
                 column_widths=column_widths,
                 row_heights=row_heights,
@@ -339,8 +373,6 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
         fig, ax = plt.subplots(figsize=(10, 10))
 
         attention_matrix = attn  # Shape: (seq_len, seq_len)
-        x_labels = [bold_special_tokens(token) for token in tokens]
-        y_labels = [bold_special_tokens(token) for token in tokens]
         title = plot_titles[0]
 
         # Prepare data
@@ -351,6 +383,15 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
 
         # Find top attention cells
         top_cells = find_top_cells(data, top_n)
+
+        if len(tokens) > length_threshold:
+            x_labels = generate_sparse_labels(tokens, top_cells, 1, interval=interval, if_interval=if_interval, if_top_cells=if_top_cells)
+            y_labels = generate_sparse_labels(tokens, top_cells, 0, interval=interval, if_interval=if_interval, if_top_cells=if_top_cells)
+            show_scores = False
+        else:
+            x_labels = [bold_special_tokens(token) for token in tokens]
+            y_labels = [bold_special_tokens(token) for token in tokens]
+            show_scores = show_scores_in_enlarged_cells
 
         # Initialize column widths and row heights
         num_rows, num_cols = data.shape
@@ -364,13 +405,13 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
             column_widths[col_index] = enlarged_size
             row_heights[row_index] = enlarged_size
 
-        ax, _ = create_tablelens_heatmap(
+        ax, plotter = create_tablelens_heatmap(
             attention_matrix,
             x_labels,
             y_labels,
             title,
-            "Tokens Attended to",
-            "Tokens Attending",
+            xlabel,
+            ylabel,
             ax,
             column_widths=column_widths,
             row_heights=row_heights,
@@ -380,8 +421,35 @@ def visualize_attention_self_attention(attentions, tokens, layer, head, question
             norm=norm,
             gamma=gamma,
             left_top_cells=left_top_cells,
-            right_bottom_cells=right_bottom_cells
+            right_bottom_cells=right_bottom_cells,
+            show_scores=show_scores,
+            background_color=False
         )
+
+        # If using sparse labels, set custom ticks to only show where labels exist
+        if len(tokens) > length_threshold:
+            # Find positions with non-empty labels
+            x_tick_indices = [i for i, label in enumerate(x_labels) if label]
+            y_tick_indices = [i for i, label in enumerate(y_labels) if label]
+            
+            # Get positions from the plotter
+            if x_tick_indices:
+                # Get cell centers for each position with a label
+                x_positions = [plotter.col_positions[i] + 
+                              (plotter.col_positions[i+1] - plotter.col_positions[i])/2 
+                              for i in x_tick_indices]
+                x_tick_labels = [x_labels[i] for i in x_tick_indices]
+                ax.set_xticks(x_positions)
+                ax.set_xticklabels(x_tick_labels, rotation=45, ha='right')
+            
+            if y_tick_indices:
+                y_positions = [plotter.row_positions[i] + 
+                              (plotter.row_positions[i+1] - plotter.row_positions[i])/2 
+                              for i in y_tick_indices]
+                y_tick_labels = [y_labels[i] for i in y_tick_indices]
+                ax.set_yticks(y_positions)
+                ax.set_yticklabels(y_tick_labels)
+        
 
         if save_path is None:
             save_path = "self_attention_heatmap.pdf"
@@ -657,6 +725,7 @@ def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens
         raise ValueError("Invalid use_case for decoder-only visualization. Choose from 'full_sequence', 'self_attention_source', 'generated_to_source', or 'self_attention_generated'.")
 
 def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decoder_tokens,
+                                        xlabel=None, ylabel=None,
                                         top_n=3, enlarged_size=1.8, gamma=1.5,
                                         plot_title=None, left_top_cells=None, right_bottom_cells=None,
                                         save_path=None, use_case='cross_attention'):
@@ -667,6 +736,8 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
     - attention_matrix: The attention matrix (numpy array or torch tensor).
     - encoder_tokens: List of encoder token labels.
     - decoder_tokens: List of decoder token labels.
+    - xlabel: Label for the x-axis.
+    - ylabel: Label for the y-axis.
     - top_n: The number of top attention scores to highlight.
     - enlarged_size: Factor by which to enlarge the top cells.
     - gamma: Gamma value for the power normalization of the colormap.
@@ -686,29 +757,37 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
         # Cross-Attention: Decoder attending to Encoder outputs
         x_labels = [bold_special_tokens(token) for token in encoder_tokens]
         y_labels = [bold_special_tokens(token) for token in decoder_tokens]
-        xlabel = "Encoder Tokens"
-        ylabel = "Decoder Tokens"
+        if xlabel is None:
+            xlabel = "Encoder Tokens"
+        if ylabel is None:
+            ylabel = "Decoder Tokens"
         default_title = "Cross-Attention Heatmap (Decoder to Encoder)"
         expected_shape = (len(decoder_tokens), len(encoder_tokens))
+        save_path = "cross_attention_heatmap.pdf"
 
     elif use_case == 'encoder_self_attention':
         # Encoder Self-Attention
         x_labels = [bold_special_tokens(token) for token in encoder_tokens]
         y_labels = [bold_special_tokens(token) for token in encoder_tokens]
-        xlabel = "Encoder Tokens"
-        ylabel = "Encoder Tokens"
+        if xlabel is None:
+            xlabel = "Encoder Tokens"
+        if ylabel is None:
+            ylabel = "Encoder Tokens"
         default_title = "Encoder Self-Attention Heatmap"
         expected_shape = (len(encoder_tokens), len(encoder_tokens))
+        save_path = "encoder_self_attention_heatmap.pdf"
 
     elif use_case == 'decoder_self_attention':
         # Decoder Self-Attention
         x_labels = [bold_special_tokens(token) for token in decoder_tokens]
         y_labels = [bold_special_tokens(token) for token in decoder_tokens]
-        xlabel = "Decoder Tokens"
-        ylabel = "Decoder Tokens"
+        if xlabel is None:
+            xlabel = "Decoder Tokens"
+        if ylabel is None:
+            ylabel = "Decoder Tokens"
         default_title = "Decoder Self-Attention Heatmap"
         expected_shape = (len(decoder_tokens), len(decoder_tokens))
-
+        save_path = "decoder_self_attention_heatmap.pdf"
     else:
         raise ValueError("Invalid use_case. Choose from 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.")
 
@@ -754,7 +833,8 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
         norm=norm,
         gamma=gamma,
         left_top_cells=left_top_cells,
-        right_bottom_cells=right_bottom_cells
+        right_bottom_cells=right_bottom_cells,
+        lean_more=True
     )
 
     plt.tight_layout()
@@ -763,6 +843,39 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
     plt.savefig(save_path)
     plt.close(fig)
     print(f"Attention heatmap saved to {save_path}")
+
+# Helper function to generate sparse labels
+def generate_sparse_labels(tokens, top_cells, axis, interval=10, if_interval=True, if_top_cells=True):
+    """
+    Generate sparse labels for token lists, showing only:
+    1. Labels at regular intervals
+    2. Labels for tokens associated with important attention cells
+    
+    Parameters:
+    - tokens: List of token labels
+    - top_cells: List of (row, col) tuples of important cells
+    - axis: Which axis the labels are for (0 for rows/y-axis, 1 for columns/x-axis)
+    - interval: Show a label every N tokens
+    
+    Returns:
+    - List of labels, with empty strings for positions without labels
+    """
+    # Create an array of empty strings
+    sparse_labels = [""] * len(tokens)
+    
+    if if_interval:
+        # Add regular interval labels (token indices)
+        for i in range(0, len(tokens), interval):
+            if i < len(tokens):
+                sparse_labels[i] = f"{i}"
+    if if_top_cells:
+        # Add labels for top cells
+        for row, col in top_cells:
+            idx = col if axis == 1 else row
+            if 0 <= idx < len(tokens):
+                sparse_labels[idx] = bold_special_tokens(tokens[idx])
+    
+    return sparse_labels
 
 # Helper function to find top attention cells
 def find_top_cells(data, top_n):
@@ -1153,8 +1266,9 @@ def check_stability_heatmap(
 
     return ax
 
-def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison with Circles", save_path=None, 
-                                      circle_scale=1.0, gamma=1.5, cmap="Blues"):
+def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison with Circles", 
+                                        xlabel=None, ylabel=None, save_path=None, 
+                                        circle_scale=1.0, gamma=1.5, cmap="Blues", max_circle_ratio=0.45):
     """
     Compares two attention matrices by showing the first matrix as background colors
     and the second matrix as circles with varying sizes based on their differences.
@@ -1164,10 +1278,15 @@ def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison 
     - attn2: Second attention matrix (used for circle colors)
     - tokens: List of token labels for x/y axes
     - title: Title for the plot
+    - xlabel: Label for the x-axis.
+    - ylabel: Label for the y-axis.
     - save_path: File path to save the generated heatmap PDF
     - circle_scale: Scale factor for circle sizes (default: 1.0)
     - gamma: Gamma value for the power normalization of the colormap (default: 1.5)
     - cmap: Colormap to use (default: 'Blues')
+    - max_circle_ratio : float, default=0.45
+        Maximum radius of a circle as a fraction of half-cell width. Values < 0.5
+        ensure circles don't completely fill the cell.
     """
     fig, ax = plt.subplots(figsize=(10, 10))
 
@@ -1192,8 +1311,8 @@ def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison 
         x_labels=[bold_special_tokens(token) for token in tokens],
         y_labels=[bold_special_tokens(token) for token in tokens],
         title=title,
-        xlabel="Tokens Attended to",
-        ylabel="Tokens Attending",
+        xlabel=xlabel,
+        ylabel=ylabel,
         ax=ax,
         cmap=cmap,
         norm=norm,
@@ -1216,7 +1335,7 @@ def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison 
     for i in range(len(row_centers)):
         for j in range(len(col_centers)):
             # Determine radius (max 0.5 to fit within cell)
-            radius = min(circle_scale * 0.5 * (diff[i, j] / max_diff), 0.5)
+            radius = min(circle_scale * max_circle_ratio * (diff[i, j] / max_diff), 0.5)
             
             if radius > 0:  # Only add circles where there's a difference
                 circ = Circle(
@@ -1240,22 +1359,8 @@ def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison 
 
 
 
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import PowerNorm
-from matplotlib.patches import Circle
-from matplotlib.collections import PatchCollection
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
 # Ensure you have your create_tablelens_heatmap imported or defined as in your code
 # from .visualization import create_tablelens_heatmap  # or adjust import path
-
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import PowerNorm
-from matplotlib.patches import Circle
-from matplotlib.collections import PatchCollection
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # Make sure you have your create_tablelens_heatmap function available
 # from .visualization import create_tablelens_heatmap  # or adjust the import path
@@ -1619,7 +1724,10 @@ def check_stability_heatmap_with_gradient_color(
     linewidths=1.0,        # Grid line width
     save_path="check_stability_heatmap_with_gradient_color.pdf",
     gamma=1.5,
-    radial_resolution=100   # Resolution of the radial gradient image
+    radial_resolution=100,   # Resolution of the radial gradient image
+    use_white_center=True,   # If True, use white at center instead of (mean-err) color
+    color_contrast_scale=2.0, # Factor to enhance contrast between inner and outer colors
+    max_circle_ratio=0.45    # Maximum circle radius as a fraction of half-cell width (was 0.5)
 ):
     """
     Plots an n-run stability heatmap:
@@ -1629,12 +1737,15 @@ def check_stability_heatmap_with_gradient_color(
       2) Each cell has a circle whose radius is proportional to the "confidence interval"
          (e.g. std or SEM). A bigger interval => a bigger circle.
       3) The circle is filled with a *radial gradient*:
-         - The gradient goes from the color corresponding to the cell's 'lower bound'
-           (mean - error) in the center,
-           to the color of the 'upper bound' (mean + error) at the edge.
+         - When use_white_center=False: The gradient goes from the color corresponding 
+           to the cell's 'lower bound' (mean - err*color_contrast_scale) in the center,
+           to the color of the 'upper bound' (mean + err*color_contrast_scale) at the edge,
+           creating enhanced color contrast between center and edge.
+         - When use_white_center=True: The gradient goes from white in the center
+           to the color of the 'upper bound' (mean + err) at the edge.
       4) Everything (squares + gradient circles) uses the same global PowerNorm scale
          and shares the same colorbar.
-
+    
     Parameters
     ----------
     matrices : list or np.ndarray
@@ -1667,7 +1778,14 @@ def check_stability_heatmap_with_gradient_color(
         Gamma value for PowerNorm (affects both squares and gradient).
     radial_resolution : int
         Resolution used for the radial gradient images (NxN).
-
+    use_white_center : bool
+        If True, use white at center instead of (mean-err) color.
+    color_contrast_scale : float
+        Factor to enhance contrast between inner and outer colors of the gradient.
+    max_circle_ratio : float
+        Maximum radius of a circle as a fraction of half-cell width. Values < 0.5
+        ensure circles don't completely fill the cell (default: 0.45).
+    
     Returns
     -------
     ax : matplotlib.axes.Axes
@@ -1733,7 +1851,8 @@ def check_stability_heatmap_with_gradient_color(
         linewidths=linewidths,
         vmin=vmin,
         vmax=vmax,
-        norm=norm
+        norm=norm,
+        lean_more=True
     )
 
     # 7) We'll render a radial gradient for each cell.
@@ -1778,12 +1897,18 @@ def check_stability_heatmap_with_gradient_color(
                 continue
 
             # Circle radius in data coordinates
-            # bigger error => bigger circle up to 0.5 * circle_scale
-            radius = (err / max_err) * 0.5 * circle_scale
+            # bigger error => bigger circle up to max_circle_ratio * circle_scale
+            radius = (err / max_err) * max_circle_ratio * circle_scale
 
             # Find the lower/upper values for the gradient
-            val_lower = mean_vals[i, j] - err
-            val_upper = mean_vals[i, j] + err
+            if use_white_center:
+                # For white center, use normal error for upper bound
+                val_lower = mean_vals[i, j]  # Not used with white center
+                val_upper = mean_vals[i, j] + err
+            else:
+                # Apply contrast scaling when using color gradient from lower to upper
+                val_lower = mean_vals[i, j] - (err * color_contrast_scale)
+                val_upper = mean_vals[i, j] + (err * color_contrast_scale)
 
             # Clamp to [vmin, vmax]
             val_lower = max(val_lower, vmin)
@@ -1793,7 +1918,13 @@ def check_stability_heatmap_with_gradient_color(
 
             # Convert to RGBA
             cmap_obj = plt.get_cmap(cmap)
-            inner_rgba = np.array(cmap_obj(norm(val_lower)), dtype=float)
+            
+            # Use white at center if specified, otherwise use lower bound color
+            if use_white_center:
+                inner_rgba = np.array([1.0, 1.0, 1.0, 1.0], dtype=float)  # White with full opacity
+            else:
+                inner_rgba = np.array(cmap_obj(norm(val_lower)), dtype=float)
+                
             outer_rgba = np.array(cmap_obj(norm(val_upper)), dtype=float)
 
             # Build a radial gradient image NxN
@@ -1821,10 +1952,6 @@ def check_stability_heatmap_with_gradient_color(
             circ = Circle((x_center, y_center), radius=radius, transform=ax.transData)
             im.set_clip_path(circ)
 
-    # 8) Tidy up label rotations
-    ax.set_xticklabels(x_labels, rotation=45, ha='right')
-    ax.set_yticklabels(y_labels, rotation=0, ha='right')
-
     # 9) Save or show
     if save_path:
         plt.tight_layout()
@@ -1835,7 +1962,6 @@ def check_stability_heatmap_with_gradient_color(
         plt.tight_layout()
 
     return ax
-
 
 
 
@@ -2262,17 +2388,6 @@ def half_pie_heatmap(
     return ax
 
 
-import matplotlib.patches as patches
-from matplotlib.patches import Wedge, Rectangle, Circle
-from matplotlib.colors import PowerNorm
-from matplotlib.collections import LineCollection
-from matplotlib.lines import Line2D
-import matplotlib.cm as cm
-import re
-from mpl_toolkits.axes_grid1 import make_axes_locatable 
-import torch # Ensure torch is imported if handling tensors
-
-
 def visualize_attention_evolution_sparklines(
     attentions_over_time,  # List/array of shape [n_epochs, ..., n_tokens, n_tokens]
     tokens=None,
@@ -2281,25 +2396,20 @@ def visualize_attention_evolution_sparklines(
     title="Attention Evolution Over Training",
     xlabel="Tokens Attended to",
     ylabel="Tokens Attending",
-    cmap="Blues",
     figsize=(12, 10),
     sparkline_color_dark="darkblue",
     sparkline_color_light="white",
     sparkline_linewidth=1.0,
     sparkline_alpha=0.8,
-    background_alpha=1.0,  # Alpha for the background heatmap
     gamma=1.5,  # For PowerNorm
-    grid_color="white",
-    grid_linewidth=0.5,
     normalize_sparklines=True,  # New parameter to control sparkline normalization
-    save_path="attention_evolution_sparklines.pdf",
-    title_fontsize=16  # Added parameter for title size
+    save_path="attention_evolution_sparklines.pdf"
 ):
     """
     Visualize the evolution of attention matrices over training epochs with sparklines.
     
     Args:
-        attentions_over_time: List or array of attention matrices [n_epochs, ..., n_tokens, n_tokens]
+        attentions_over_time: Numpy array with shape [n_epochs, layers, heads, n_tokens, n_tokens]
         tokens: List of token labels (optional)
         layer: Layer index to extract (if needed)
         head: Head index to extract (if needed)
@@ -2307,67 +2417,46 @@ def visualize_attention_evolution_sparklines(
         xlabel, ylabel: Axis labels
         cmap: Colormap for the background
         figsize: Figure size
-        sparkline_color: Color for the evolution line charts
+        sparkline_color_dark: Dark color for the sparklines
+        sparkline_color_light: Light color for the sparklines
         sparkline_linewidth: Width of sparkline
         sparkline_alpha: Transparency of sparklines
-        highlight_top_n: Number of top cells to highlight
         background_alpha: Transparency of the background heatmap
         gamma: For PowerNorm color scaling
-        highlight_color: Color for highlighting top cells
         grid_color: Color for grid lines
         grid_linewidth: Width of grid lines
+        normalize_sparklines: Whether to normalize sparklines
         save_path: Path to save the figure
+        title_fontsize: Font size for the title
         
     Returns:
         matplotlib.axes.Axes: The axes containing the visualization
     """
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as mcolors
-    from matplotlib.colors import PowerNorm
-    from matplotlib.lines import Line2D
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-    import torch
+    # Convert input to numpy array if it's not already
+    if not isinstance(attentions_over_time, np.ndarray):
+        try:
+            # Try converting to numpy array
+            if torch.is_tensor(attentions_over_time):
+                attentions_over_time = attentions_over_time.detach().cpu().numpy()
+            else:
+                attentions_over_time = np.array(attentions_over_time)
+            print(f"Converted input to numpy array with shape {attentions_over_time.shape}")
+        except Exception as e:
+            raise ValueError(f"Failed to convert input to numpy array: {str(e)}")
+    
+    # Validate dimensions after conversion
+    if attentions_over_time.ndim != 5:
+        raise ValueError(f"Expected attentions_over_time to have 5 dimensions [n_epochs, layers, heads, n_tokens, n_tokens], "
+                         f"but got shape {attentions_over_time.shape}")
     
     # Process the attention matrices
     matrices = []
     for epoch_attn in attentions_over_time:
-        # Check if we're dealing with a torch tensor or numpy array
-        if torch.is_tensor(epoch_attn):
-            # Process torch tensor
-            attn = epoch_attn
-            
-            # Extract layer and head if needed
-            if layer is not None and head is not None:
-                # Try to handle different tensor shapes
-                ndim = attn.dim()
-                if ndim >= 4:  # [batch/epochs, layers, heads, seq, seq]
-                    attn = attn[0] if ndim > 4 else attn  # Remove batch dim if present
-                    attn = attn[layer][head]
-                elif ndim == 3:  # [layers, heads, seq, seq] or [heads, seq, seq]
-                    if attn.size(0) > 1 and layer is not None:
-                        attn = attn[layer][head]
-                    else:
-                        attn = attn[head]
-            
-            # Convert to numpy
-            attn = attn.detach().cpu().numpy()
-        else:
-            # Process numpy array
-            attn = epoch_attn
-            
-            # Extract layer and head if needed
-            if layer is not None and head is not None:
-                ndim = attn.ndim
-                if ndim >= 4:
-                    attn = attn[0] if ndim > 4 else attn  # Remove batch dim if present
-                    attn = attn[layer][head]
-                elif ndim == 3:
-                    if attn.shape[0] > 1 and layer is not None:
-                        attn = attn[layer][head]
-                    else:
-                        attn = attn[head]
+        # Extract layer and head
+        if layer is None or head is None:
+            raise ValueError("Both layer and head must be specified")
         
+        attn = epoch_attn[layer][head]
         matrices.append(attn)
     
     # Stack matrices for easier processing
@@ -2381,26 +2470,66 @@ def visualize_attention_evolution_sparklines(
     fig, ax = plt.subplots(figsize=figsize)
     
     # Create background heatmap with average attention
-    norm = PowerNorm(gamma=gamma)
-    im = ax.imshow(avg_attention, cmap=cmap, alpha=background_alpha, norm=norm)
+    # norm = PowerNorm(gamma=gamma)
+    # im = ax.imshow(avg_attention, cmap=cmap, alpha=background_alpha, norm=norm)
     
-    # Add grid lines
-    ax.set_xticks(np.arange(-.5, n_tokens, 1), minor=True)
-    ax.set_yticks(np.arange(-.5, n_tokens, 1), minor=True)
-    ax.grid(which="minor", color=grid_color, linestyle='-', linewidth=grid_linewidth)
-    ax.tick_params(which="minor", size=0)
+    # # Add grid lines
+    # ax.set_xticks(np.arange(-.5, n_tokens, 1), minor=True)
+    # ax.set_yticks(np.arange(-.5, n_tokens, 1), minor=True)
+    # ax.grid(which="minor", color=grid_color, linestyle='-', linewidth=grid_linewidth)
+    # ax.tick_params(which="minor", size=0)
+    min_val = avg_attention.min()
+    max_val = avg_attention.max()
+    norm = PowerNorm(gamma=1.5, vmin=min_val, vmax=max_val)
+
+    x_labels = [bold_special_tokens(token) for token in tokens]
+    y_labels = [bold_special_tokens(token) for token in tokens]
+
+    ax, plotter = create_tablelens_heatmap(
+        avg_attention,
+        x_labels,
+        y_labels,
+        title,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        ax=ax,
+        vmin=min_val,
+        vmax=max_val,
+        norm=norm,
+        gamma=gamma
+    )
     
-    # Add sparklines in each cell
-    cell_height = 1.0
-    cell_width = 1.0
+    # Get cell centers directly from plotter
+    row_centers = plotter.row_centers
+    col_centers = plotter.col_centers
+    
+    # # Get the actual cell positions from the heatmap
+    # # This fixes the coordinate mismatch between tablelens and sparklines
+    # cells = ax.collections[0]  # The heatmap cells collection
+    # cell_positions = []
+    
+    # for i in range(n_tokens):
+    #     row_positions = []
+    #     for j in range(n_tokens):
+    #         # Get the path for this cell
+    #         path = cells.get_paths()[i*n_tokens + j]
+    #         # Get the bounds of the cell (xmin, ymin, xmax, ymax)
+    #         cell_rect = path.get_extents()
+    #         # Calculate cell center and dimensions
+    #         x_center = (cell_rect.x0 + cell_rect.x1) / 2
+    #         y_center = (cell_rect.y0 + cell_rect.y1) / 2
+    #         width = cell_rect.width
+    #         height = cell_rect.height
+    #         row_positions.append((x_center, y_center, width, height))
+    #     cell_positions.append(row_positions)
+    
+    # # Add sparklines in each cell
+    # cell_height = 1.0
+    # cell_width = 1.0
     
     # Function to interpolate between two colors
     def get_sparkline_color(cell_intensity):
         """Return either dark blue or white based on background intensity relative to color bar midpoint."""
-        # Use simple linear normalization for determining the threshold
-        min_val = avg_attention.min()
-        max_val = avg_attention.max()
-        
         # Calculate the middle of the color range (with PowerNorm influence)
         norm_tmp = PowerNorm(gamma=1.5, vmin=min_val, vmax=max_val)
         middle_value = norm_tmp.inverse(0.5)
@@ -2413,75 +2542,149 @@ def visualize_attention_evolution_sparklines(
         global_min = attention_stack.min()
         global_max = attention_stack.max()
     
+    # Draw sparklines using row_centers and col_centers
     for i in range(n_tokens):
         for j in range(n_tokens):
             # Get time series for this cell
             values = attention_stack[:, i, j]
             
-            # Normalize based on user preference
+            # Get cell centers
+            y_center = row_centers[i]
+            x_center = col_centers[j]
+            
+            # Estimate cell dimensions based on spacing between centers
+            width = col_centers[1] - col_centers[0] if len(col_centers) > 1 else 1.0
+            height = row_centers[1] - row_centers[0] if len(row_centers) > 1 else 1.0
+            
+            # Normalize values as before
             if normalize_sparklines:
-                # Per-cell normalization (original behavior)
                 min_val, max_val = values.min(), values.max()
                 if max_val > min_val:  # Avoid division by zero
                     norm_values = (values - min_val) / (max_val - min_val)
                 else:
                     norm_values = np.ones_like(values) * 0.5
             else:
-                # Global normalization (all cells share same y-axis scale)
-                if global_max > global_min:  # Avoid division by zero
+                if global_max > global_min:
                     norm_values = (values - global_min) / (global_max - global_min)
                 else:
                     norm_values = np.ones_like(values) * 0.5
             
-            # Create x-coordinates for the time steps
-            x = np.linspace(j - cell_width/2 + 0.1, j + cell_width/2 - 0.1, n_epochs)
+            # Create x-coordinates centered in the cell
+            x = np.linspace(x_center - width*0.4, x_center + width*0.4, n_epochs)
             
-            # Calculate y-coordinates: invert normalized values to plot within cell
-            y = i + (1 - norm_values) * cell_height * 0.8 - cell_height * 0.4
+            # Calculate y-coordinates (with the correct orientation)
+            y = y_center - (norm_values - 0.5) * height * 0.7
             
-            # Determine color based on background intensity
+            # Determine color and plot sparkline
             cell_intensity = avg_attention[i, j]
             sparkline_color = get_sparkline_color(cell_intensity)
-            
-            # Plot the sparkline
             ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
+
     
-    # Set token labels if provided
-    if tokens is not None:
-        if len(tokens) != n_tokens:
-            print(f"Warning: tokens list length ({len(tokens)}) doesn't match matrix dimensions ({n_tokens})")
-            # Truncate or pad tokens list as needed
-            tokens = tokens[:n_tokens] if len(tokens) > n_tokens else tokens + [""] * (n_tokens - len(tokens))
+    # for i in range(n_tokens):
+    #     for j in range(n_tokens):
+    #         # Get time series for this cell
+    #         values = attention_stack[:, i, j]
+            
+    #         # Normalize based on user preference
+    #         if normalize_sparklines:
+    #             # Per-cell normalization (original behavior)
+    #             min_val, max_val = values.min(), values.max()
+    #             if max_val > min_val:  # Avoid division by zero
+    #                 norm_values = (values - min_val) / (max_val - min_val)
+    #             else:
+    #                 norm_values = np.ones_like(values) * 0.5
+    #         else:
+    #             # Global normalization (all cells share same y-axis scale)
+    #             if global_max > global_min:  # Avoid division by zero
+    #                 norm_values = (values - global_min) / (global_max - global_min)
+    #             else:
+    #                 norm_values = np.ones_like(values) * 0.5
+            
+    #         # Create x-coordinates for the time steps
+    #         x = np.linspace(j - cell_width/2 + 0.1, j + cell_width/2 - 0.1, n_epochs)
+            
+    #         # Calculate y-coordinates: invert normalized values to plot within cell
+    #         y = i + (1 - norm_values) * cell_height * 0.8 - cell_height * 0.4
+            
+    #         # Determine color based on background intensity
+    #         cell_intensity = avg_attention[i, j]
+    #         sparkline_color = get_sparkline_color(cell_intensity)
+            
+    #         # Plot the sparkline
+    #         ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
+
+    # # Now use actual cell positions for sparklines
+    # for i in range(n_tokens):
+    #     for j in range(n_tokens):
+    #         # Get time series for this cell
+    #         values = attention_stack[:, i, j]
+            
+    #         # Get actual cell position and dimensions
+    #         x_center, y_center, width, height = cell_positions[i][j]
+            
+    #         # Normalize values as before
+    #         if normalize_sparklines:
+    #             # Per-cell normalization
+    #             min_val, max_val = values.min(), values.max()
+    #             if max_val > min_val:  # Avoid division by zero
+    #                 norm_values = (values - min_val) / (max_val - min_val)
+    #             else:
+    #                 norm_values = np.ones_like(values) * 0.5
+    #         else:
+    #             # Global normalization
+    #             if global_max > global_min:
+    #                 norm_values = (values - global_min) / (global_max - global_min)
+    #             else:
+    #                 norm_values = np.ones_like(values) * 0.5
+            
+    #         # Create x-coordinates centered in the actual cell
+    #         x = np.linspace(x_center - width*0.4, x_center + width*0.4, n_epochs)
+            
+    #         # Calculate y-coordinates using actual cell dimensions
+    #         y = y_center - (norm_values - 0.5) * height * 0.7
+            
+    #         # Determine color and plot sparkline
+    #         cell_intensity = avg_attention[i, j]
+    #         sparkline_color = get_sparkline_color(cell_intensity)
+    #         ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
+    
+    # # Set token labels if provided
+    # if tokens is not None:
+    #     if len(tokens) != n_tokens:
+    #         print(f"Warning: tokens list length ({len(tokens)}) doesn't match matrix dimensions ({n_tokens})")
+    #         # Truncate or pad tokens list as needed
+    #         tokens = tokens[:n_tokens] if len(tokens) > n_tokens else tokens + [""] * (n_tokens - len(tokens))
         
-        # Create formatted labels (escape special chars, etc.)
-        formatted_tokens = []
-        for token in tokens:
-            if token.startswith("<") and token.endswith(">"):
-                token = r"$\bf{" + token + "}$"  # Make special tokens bold
-            formatted_tokens.append(token)
+    #     # Create formatted labels (escape special chars, etc.)
+    #     formatted_tokens = []
+    #     for token in tokens:
+    #         if token.startswith("<") and token.endswith(">"):
+    #             token = r"$\bf{" + token + "}$"  # Make special tokens bold
+    #         formatted_tokens.append(token)
         
         # Set labels
-        ax.set_xticks(np.arange(n_tokens))
-        ax.set_yticks(np.arange(n_tokens))
-        ax.set_xticklabels(formatted_tokens)
-        ax.set_yticklabels(formatted_tokens)
+        # ax.set_xticks(np.arange(n_tokens))
+        # ax.set_yticks(np.arange(n_tokens))
+        # ax.set_xticklabels(formatted_tokens)
+        # ax.set_yticklabels(formatted_tokens)
     
     # Set title and labels
-    ax.set_title(title, fontsize=title_fontsize)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.xaxis.set_label_position('top')
-    ax.xaxis.tick_top()
+    # ax.set_title(title, fontsize=title_fontsize)
+    # ax.set_xlabel(xlabel)
+    # ax.set_ylabel(ylabel)
+    # ax.xaxis.set_label_position('top')
+    # ax.xaxis.tick_top()
 
-    for label in ax.get_xticklabels():
-        label.set_rotation(45)
+    # for label in ax.get_xticklabels():
+    #     label.set_rotation(45)
     
     # Add colorbar for the background
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    cbar = plt.colorbar(im, cax=cax)
-    cbar.outline.set_visible(False)
-    cbar.set_label("Average Attention")
+    # divider = make_axes_locatable(ax)
+    # cax = divider.append_axes("right", size="5%", pad=0.05)
+    # cbar = plt.colorbar(im, cax=cax)
+    # cbar.outline.set_visible(False)
+    # cbar.set_label("Average Attention")
     
     # Update legend - show both dark and light sparkline colors
     legend_elements = [
@@ -2499,5 +2702,445 @@ def visualize_attention_evolution_sparklines(
     if save_path:
         plt.savefig(save_path, bbox_inches='tight', dpi=300)
         print(f"Figure saved to {save_path}")
+    
+    return ax
+
+
+
+
+from collections import deque
+
+def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distance=2, 
+                                        expansion_threshold=0.8, merge_std_threshold=0.8):
+    """
+    Find rectangular regions of high attention in an attention matrix with intelligent merging.
+    
+    Parameters:
+        attention_matrix: 2D numpy array of attention scores
+        n_seeds: Number of seed points to start with and final number of rectangles
+        min_distance: Minimum distance between seed points
+        expansion_threshold: Threshold for region expansion (ratio of rectangle avg to boundary avg)
+        merge_std_threshold: Threshold ratio of merged std dev / avg individual std dev (lower = stricter)
+        
+    Returns:
+        List of (top, left, bottom, right) tuples representing rectangles
+    """
+    rows, cols = attention_matrix.shape
+    
+    # Step 1: Find potential seed positions with high attention scores
+    # We'll get more than needed to have reserves for replacements after merging
+    potential_seeds = []
+    flat_indices = np.argsort(attention_matrix.flatten())[::-1]  # Indices sorted by decreasing value
+    
+    for idx in flat_indices:
+        r, c = idx // cols, idx % cols
+        
+        # Check if this seed is far enough from existing seeds
+        valid_seed = True
+        for seed_r, seed_c in potential_seeds:
+            if abs(seed_r - r) <= min_distance and abs(seed_c - c) <= min_distance:
+                valid_seed = False
+                break
+                
+        if valid_seed:
+            potential_seeds.append((r, c))
+            if len(potential_seeds) >= n_seeds * 3:  # Get 3x more seeds than needed as reserve
+                break
+    
+    # Start with the first n_seeds
+    active_seeds = potential_seeds[:n_seeds]
+    seed_queue = deque(potential_seeds[n_seeds:])
+    
+    # Step 2: Grow rectangles from active seeds
+    rectangles = [(r, c, r, c) for r, c in active_seeds]  # (top, left, bottom, right)
+    rectangle_stats = [calculate_rectangle_stats(attention_matrix, rect) for rect in rectangles]
+    
+    # Main expansion loop
+    iteration = 0
+    max_iterations = 1000  # Safety limit
+    
+    while iteration < max_iterations:
+        iteration += 1
+        
+        # Flag to track if any expansion or merging happened this round
+        any_change = False
+        
+        # Try expanding each rectangle
+        for i in range(len(rectangles)):
+            # Skip if this rectangle was already merged
+            if rectangles[i] is None:
+                continue
+                
+            top, left, bottom, right = rectangles[i]
+            
+            # Try expanding in each direction
+            directions = [
+                (-1, 0, 0, 0),  # Top
+                (0, -1, 0, 0),  # Left
+                (0, 0, 1, 0),   # Bottom
+                (0, 0, 0, 1)    # Right
+            ]
+            
+            best_rect = rectangles[i]
+            best_score = calculate_expansion_score(attention_matrix, best_rect)
+            best_direction = None
+            
+            for direction in directions:
+                d_top, d_left, d_bottom, d_right = direction
+                new_top = max(0, top + d_top)
+                new_left = max(0, left + d_left)
+                new_bottom = min(rows - 1, bottom + d_bottom)
+                new_right = min(cols - 1, right + d_right)
+                
+                # Skip if no change
+                if (new_top, new_left, new_bottom, new_right) == rectangles[i]:
+                    continue
+                
+                new_rect = (new_top, new_left, new_bottom, new_right)
+                new_score = calculate_expansion_score(attention_matrix, new_rect)
+                
+                # Check if expansion improves score beyond threshold
+                if new_score > best_score * expansion_threshold:
+                    best_rect = new_rect
+                    best_score = new_score
+                    best_direction = direction
+            
+            # If we found a better rectangle, check for overlaps
+            if best_direction is not None:
+                # Check for overlaps with other rectangles
+                overlaps_with = []
+                for j, rect in enumerate(rectangles):
+                    if j != i and rect is not None and rectangles_overlap(best_rect, rect):
+                        overlaps_with.append(j)
+                
+                if not overlaps_with:
+                    # No overlap, proceed with expansion
+                    rectangles[i] = best_rect
+                    rectangle_stats[i] = calculate_rectangle_stats(attention_matrix, best_rect)
+                    any_change = True
+                else:
+                    # There's overlap - evaluate whether to merge
+                    can_merge = True
+                    for j in overlaps_with:
+                        if not should_merge_rectangles(attention_matrix, rectangles[i], rectangles[j], 
+                                                    rectangle_stats[i], rectangle_stats[j], 
+                                                    merge_std_threshold):
+                            can_merge = False
+                            break
+                    
+                    if can_merge:
+                        # Merge rectangles
+                        merged_rect = merge_rectangles([rectangles[i]] + [rectangles[j] for j in overlaps_with])
+                        merged_stats = calculate_rectangle_stats(attention_matrix, merged_rect)
+                        
+                        # Update the current rectangle with merged one
+                        rectangles[i] = merged_rect
+                        rectangle_stats[i] = merged_stats
+                        
+                        # Mark the other rectangles as merged (None)
+                        for j in overlaps_with:
+                            rectangles[j] = None
+                            rectangle_stats[j] = None
+                        
+                        # Get new seeds for the merged rectangles
+                        for _ in range(len(overlaps_with)):
+                            if seed_queue:
+                                new_seed = seed_queue.popleft()
+                                new_rect = (new_seed[0], new_seed[1], new_seed[0], new_seed[1])
+                                
+                                # Find the first None position to replace
+                                for k in range(len(rectangles)):
+                                    if rectangles[k] is None:
+                                        rectangles[k] = new_rect
+                                        rectangle_stats[k] = calculate_rectangle_stats(attention_matrix, new_rect)
+                                        break
+                        
+                        any_change = True
+                    # else: can't merge, so don't expand in this direction
+        
+        # If no changes happened this iteration, we're done
+        if not any_change:
+            break
+    
+    # Remove any None entries from rectangles (result of merging)
+    rectangles = [rect for rect in rectangles if rect is not None]
+    
+    # If we still need more rectangles (could happen if we ran out of seeds)
+    while len(rectangles) < n_seeds:
+        if not seed_queue:
+            # No more seeds available
+            break
+            
+        new_seed = seed_queue.popleft()
+        new_rect = (new_seed[0], new_seed[1], new_seed[0], new_seed[1])
+        rectangles.append(new_rect)
+    
+    return rectangles
+
+
+def calculate_rectangle_stats(matrix, rect):
+    """
+    Calculate statistics for rectangle area.
+    
+    Parameters:
+        matrix: The attention matrix
+        rect: Tuple (top, left, bottom, right)
+        
+    Returns:
+        Dict with mean, std, and sum of the rectangle area
+    """
+    top, left, bottom, right = rect
+    rectangle = matrix[top:bottom+1, left:right+1]
+    
+    return {
+        'mean': np.mean(rectangle),
+        'std': np.std(rectangle),
+        'sum': np.sum(rectangle),
+        'size': rectangle.size
+    }
+
+
+def calculate_expansion_score(matrix, rect):
+    """
+    Calculate a score for a rectangle based on average attention inside vs. boundary.
+    
+    Parameters:
+        matrix: Attention matrix
+        rect: Tuple (top, left, bottom, right)
+        
+    Returns:
+        A score value (higher is better)
+    """
+    top, left, bottom, right = rect
+    rows, cols = matrix.shape
+    
+    # Extract rectangle
+    rectangle = matrix[top:bottom+1, left:right+1]
+    avg_inside = np.mean(rectangle)
+    
+    # Calculate boundary (1-cell wide) around rectangle
+    boundary_cells = []
+    
+    # Top and bottom boundaries
+    if top > 0:
+        boundary_cells.extend(matrix[top-1, max(0, left-1):min(cols, right+2)].flatten())
+    if bottom < rows - 1:
+        boundary_cells.extend(matrix[bottom+1, max(0, left-1):min(cols, right+2)].flatten())
+        
+    # Left and right boundaries (excluding corners already counted)
+    if left > 0:
+        boundary_cells.extend(matrix[top:bottom+1, left-1].flatten())
+    if right < cols - 1:
+        boundary_cells.extend(matrix[top:bottom+1, right+1].flatten())
+    
+    # Handle case where rectangle is at edge
+    if len(boundary_cells) == 0:
+        avg_boundary = 0
+    else:
+        avg_boundary = np.mean(boundary_cells)
+    
+    # Score is ratio of inside vs boundary, adjusted by rectangle size
+    # This rewards larger rectangles when scores are similar
+    rect_size = (bottom - top + 1) * (right - left + 1)
+    size_factor = np.log1p(rect_size) / 10  # Log to prevent too much size bias
+    
+    if avg_boundary == 0:
+        score = avg_inside * (1 + size_factor)
+    else:
+        contrast = avg_inside / avg_boundary
+        score = avg_inside * contrast * (1 + size_factor)
+    
+    return score
+
+
+def rectangles_overlap(rect1, rect2):
+    """
+    Check if two rectangles overlap.
+    
+    Parameters:
+        rect1, rect2: Tuples (top, left, bottom, right)
+        
+    Returns:
+        Boolean indicating whether the rectangles overlap
+    """
+    top1, left1, bottom1, right1 = rect1
+    top2, left2, bottom2, right2 = rect2
+    
+    # Check for non-overlap conditions
+    if right1 < left2 or right2 < left1 or bottom1 < top2 or bottom2 < top1:
+        return False
+    
+    return True
+
+
+def should_merge_rectangles(matrix, rect1, rect2, stats1, stats2, merge_threshold):
+    """
+    Determine if two rectangles should be merged based on standard deviation change.
+    
+    Parameters:
+        matrix: Attention matrix
+        rect1, rect2: Tuples (top, left, bottom, right)
+        stats1, stats2: Dictionaries with statistics for each rectangle
+        merge_threshold: Threshold ratio for acceptable std dev increase
+        
+    Returns:
+        Boolean indicating whether the rectangles should be merged
+    """
+    # Calculate the merged rectangle
+    merged_rect = merge_rectangles([rect1, rect2])
+    merged_stats = calculate_rectangle_stats(matrix, merged_rect)
+    
+    # Calculate weighted average of individual standard deviations
+    total_size = stats1['size'] + stats2['size']
+    weighted_std = (stats1['std'] * stats1['size'] + stats2['std'] * stats2['size']) / total_size
+    
+    # Calculate ratio of merged std dev to weighted individual std devs
+    std_ratio = merged_stats['std'] / weighted_std if weighted_std > 0 else float('inf')
+    
+    # Allow merging if std dev doesn't increase too much (ratio close to 1.0 or below)
+    return std_ratio <= (1.0 / merge_threshold)  # Inverted so that merge_threshold < 1.0 is stricter
+
+
+def merge_rectangles(rectangles):
+    """
+    Merge multiple rectangles into one larger rectangle that contains all of them.
+    
+    Parameters:
+        rectangles: List of (top, left, bottom, right) tuples
+        
+    Returns:
+        Tuple (top, left, bottom, right) for the merged rectangle
+    """
+    tops, lefts, bottoms, rights = zip(*rectangles)
+    return (min(tops), min(lefts), max(bottoms), max(rights))
+
+
+def visualize_attention_with_detected_regions(
+    attention_matrix, 
+    source_tokens, 
+    target_tokens, 
+    title="Attention with Detected Regions",
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
+    n_regions=3,
+    min_distance=2,
+    expansion_threshold=0.8,
+    merge_std_threshold=0.8,
+    region_color='orange',
+    region_linewidth=2,
+    region_alpha=0.7,
+    label_regions=False,
+    gamma=1.5,
+    save_path="attention_with_detected_regions.pdf",
+    ax=None,
+    cmap="Blues"
+):
+    """
+    Visualize attention matrix with automatically detected important regions.
+    
+    Parameters:
+        attention_matrix: 2D numpy array of attention scores
+        tokens: List of token labels for x/y axes
+        title: Title for the plot
+        xlabel: Label for the x-axis
+        ylabel: Label for the y-axis
+        n_regions: Number of regions to detect
+        min_distance: Minimum distance between seed points
+        expansion_threshold: Threshold for region expansion
+        merge_std_threshold: Threshold for merging regions
+        region_color: Color of the region outlines
+        region_linewidth: Line width of region outlines
+        region_alpha: Alpha/transparency of region outlines
+        label_regions: Whether to add region labels
+        gamma: Gamma value for the power normalization of the colormap
+        save_path: File path to save the generated heatmap
+        ax: Matplotlib axis to plot on (if None, create new)
+        cmap: Colormap to use
+    
+    Returns:
+        Matplotlib axis with the plot
+    """
+    # Convert tensors to numpy if needed
+    if torch.is_tensor(attention_matrix):
+        attention_matrix = attention_matrix.detach().cpu().numpy()
+    
+    # Create new figure if no axis is provided
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 10))
+    
+    # Create norm for the colormap
+    vmin = attention_matrix.min()
+    vmax = attention_matrix.max()
+    norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
+    
+    # Create the base heatmap
+    ax, plotter = create_tablelens_heatmap(
+        attention_matrix,
+        x_labels=[bold_special_tokens(token) for token in source_tokens],
+        y_labels=[bold_special_tokens(token) for token in target_tokens],
+        title=title,
+        xlabel=xlabel,
+        ylabel=ylabel,
+        ax=ax,
+        cmap=cmap,
+        norm=norm,
+        gamma=gamma,
+        vmax=vmax,
+        vmin=vmin
+    )
+    
+    # Find regions of interest
+    rectangles = find_attention_regions_with_merging(
+        attention_matrix, 
+        n_seeds=n_regions, 
+        min_distance=min_distance,
+        expansion_threshold=expansion_threshold, 
+        merge_std_threshold=merge_std_threshold
+    )
+    
+    # Get the positions of the cell edges from the plotter
+    col_positions = plotter.col_positions
+    row_positions = plotter.row_positions
+    
+    # Add rectangle patches for each detected region
+    for i, (top, left, bottom, right) in enumerate(rectangles):
+        # Compute the rectangle's position and size using the actual cell positions
+        x = col_positions[left]
+        width = col_positions[right + 1] - col_positions[left]
+        y = row_positions[top]
+        height = row_positions[bottom + 1] - row_positions[top]
+        
+        # Create rectangle with correct positioning
+        rect = patches.Rectangle(
+            (x, y),
+            width,
+            height,
+            linewidth=region_linewidth, 
+            edgecolor=region_color, 
+            facecolor='none',
+            alpha=region_alpha,
+            zorder=10  # Ensure rectangle is drawn on top
+        )
+        ax.add_patch(rect)
+        
+        # Add region label if requested
+        if label_regions:
+            ax.text(
+                x + width/2,
+                y + height/2,
+                f"R{i+1}",
+                color='white', 
+                fontweight='bold', 
+                ha='center', 
+                va='center',
+                bbox=dict(facecolor=region_color, alpha=0.5, boxstyle='round'),
+                zorder=11
+            )
+    
+    # Save if requested
+    if save_path is not None:
+        plt.tight_layout()
+        plt.savefig(save_path)
+        print(f"Attention heatmap with detected regions saved to {save_path}")
     
     return ax
