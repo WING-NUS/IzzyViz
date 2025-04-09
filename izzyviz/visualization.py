@@ -2711,7 +2711,8 @@ def visualize_attention_evolution_sparklines(
 from collections import deque
 
 def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distance=2, 
-                                        expansion_threshold=0.8, merge_std_threshold=0.8):
+                                        expansion_threshold=0.8, merge_std_threshold=0.8,
+                                        proximity_threshold=2):
     """
     Find rectangular regions of high attention in an attention matrix with intelligent merging.
     
@@ -2721,9 +2722,10 @@ def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distanc
         min_distance: Minimum distance between seed points
         expansion_threshold: Threshold for region expansion (ratio of rectangle avg to boundary avg)
         merge_std_threshold: Threshold ratio of merged std dev / avg individual std dev (lower = stricter)
+        proximity_threshold: Maximum distance between rectangles to consider merging (even if not overlapping)
         
     Returns:
-        List of (top, left, bottom, right) tuples representing rectangles
+        List of (top, left, bottom, right) tuples representing rectangles, sorted by highest attention inside
     """
     rows, cols = attention_matrix.shape
     
@@ -2807,21 +2809,29 @@ def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distanc
             
             # If we found a better rectangle, check for overlaps
             if best_direction is not None:
-                # Check for overlaps with other rectangles
+                # Check for overlaps and nearby rectangles
                 overlaps_with = []
-                for j, rect in enumerate(rectangles):
-                    if j != i and rect is not None and rectangles_overlap(best_rect, rect):
-                        overlaps_with.append(j)
+                nearby = []
                 
-                if not overlaps_with:
-                    # No overlap, proceed with expansion
+                for j, rect in enumerate(rectangles):
+                    if j != i and rect is not None:
+                        if rectangles_overlap(best_rect, rect):
+                            overlaps_with.append(j)
+                        elif rectangles_nearby(best_rect, rect, proximity_threshold):
+                            nearby.append(j)
+                
+                # Combine overlapping and nearby rectangles for potential merging
+                potential_merges = overlaps_with + nearby
+                
+                if not potential_merges:
+                    # No overlaps or nearby rectangles, proceed with expansion
                     rectangles[i] = best_rect
                     rectangle_stats[i] = calculate_rectangle_stats(attention_matrix, best_rect)
                     any_change = True
                 else:
-                    # There's overlap - evaluate whether to merge
+                    # There's overlap or nearby rectangles - evaluate whether to merge
                     can_merge = True
-                    for j in overlaps_with:
+                    for j in potential_merges:
                         if not should_merge_rectangles(attention_matrix, rectangles[i], rectangles[j], 
                                                     rectangle_stats[i], rectangle_stats[j], 
                                                     merge_std_threshold):
@@ -2830,7 +2840,7 @@ def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distanc
                     
                     if can_merge:
                         # Merge rectangles
-                        merged_rect = merge_rectangles([rectangles[i]] + [rectangles[j] for j in overlaps_with])
+                        merged_rect = merge_rectangles([rectangles[i]] + [rectangles[j] for j in potential_merges])
                         merged_stats = calculate_rectangle_stats(attention_matrix, merged_rect)
                         
                         # Update the current rectangle with merged one
@@ -2838,12 +2848,12 @@ def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distanc
                         rectangle_stats[i] = merged_stats
                         
                         # Mark the other rectangles as merged (None)
-                        for j in overlaps_with:
+                        for j in potential_merges:
                             rectangles[j] = None
                             rectangle_stats[j] = None
                         
                         # Get new seeds for the merged rectangles
-                        for _ in range(len(overlaps_with)):
+                        for _ in range(len(potential_merges)):
                             if seed_queue:
                                 new_seed = seed_queue.popleft()
                                 new_rect = (new_seed[0], new_seed[1], new_seed[0], new_seed[1])
@@ -2875,7 +2885,19 @@ def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distanc
         new_rect = (new_seed[0], new_seed[1], new_seed[0], new_seed[1])
         rectangles.append(new_rect)
     
-    return rectangles
+    # Sort rectangles by average attention value (from highest to lowest)
+    rectangle_scores = []
+    for rect in rectangles:
+        stats = calculate_rectangle_stats(attention_matrix, rect)
+        rectangle_scores.append((rect, stats['mean']))
+    
+    # Sort by the mean attention score in descending order
+    rectangle_scores.sort(key=lambda x: x[1], reverse=True)
+    
+    # Extract just the rectangles in the new sorted order
+    sorted_rectangles = [rect for rect, score in rectangle_scores]
+    
+    return sorted_rectangles
 
 
 def calculate_rectangle_stats(matrix, rect):
@@ -3024,8 +3046,8 @@ def visualize_attention_with_detected_regions(
     ylabel="Tokens Attending",
     n_regions=3,
     min_distance=2,
-    expansion_threshold=0.8,
-    merge_std_threshold=0.8,
+    expansion_threshold=0.9,
+    merge_threshold=0.6,
     region_color='orange',
     region_linewidth=2,
     region_alpha=0.7,
@@ -3095,7 +3117,7 @@ def visualize_attention_with_detected_regions(
         n_seeds=n_regions, 
         min_distance=min_distance,
         expansion_threshold=expansion_threshold, 
-        merge_std_threshold=merge_std_threshold
+        merge_std_threshold=merge_threshold
     )
     
     # Get the positions of the cell edges from the plotter
@@ -3144,3 +3166,26 @@ def visualize_attention_with_detected_regions(
         print(f"Attention heatmap with detected regions saved to {save_path}")
     
     return ax
+
+def rectangles_nearby(rect1, rect2, threshold):
+    """
+    Check if two rectangles are within the specified distance threshold of each other.
+    
+    Parameters:
+        rect1, rect2: Tuples (top, left, bottom, right)
+        threshold: Maximum distance between rectangles to consider them nearby
+        
+    Returns:
+        Boolean indicating whether the rectangles are nearby
+    """
+    top1, left1, bottom1, right1 = rect1
+    top2, left2, bottom2, right2 = rect2
+    
+    # Calculate horizontal distance (positive if separated, negative if overlapping)
+    h_dist = max(0, max(left1, left2) - min(right1, right2))
+    
+    # Calculate vertical distance (positive if separated, negative if overlapping)
+    v_dist = max(0, max(top1, top2) - min(bottom1, bottom2))
+    
+    # Rectangles are nearby if both horizontal and vertical distances are within threshold
+    return h_dist <= threshold and v_dist <= threshold
