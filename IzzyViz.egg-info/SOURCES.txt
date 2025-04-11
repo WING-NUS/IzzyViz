@@ -1,0 +1,12 @@
+LICENSE
+README.md
+setup.py
+IzzyViz.egg-info/PKG-INFO
+IzzyViz.egg-info/SOURCES.txt
+IzzyViz.egg-info/dependency_links.txt
+IzzyViz.egg-info/requires.txt
+IzzyViz.egg-info/top_level.txt
+izzyviz/__init__.py
+izzyviz/my_seaborn.py
+izzyviz/utility.py
+izzyviz/visualization.py
