@@ -9,18 +9,20 @@
 - [Dependencies](#dependencies)
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
-  - [Encoder-Only Models](#encoder-only-models)
-    - [Self-Attention Mode](#self-attention-mode)
-    - [Question-Context Mode](#question-context-mode)
-  - [Decoder-Only Models](#decoder-only-models)
-    - [Full Sequence](#full-sequence)
-    - [Generated-to-Source Attention](#generated-to-source-attention)
-  - [Encoder-Decoder Models](#encoder-decoder-models)
-    - [Cross-Attention](#cross-attention)
+  - [Self-Attention Visualization](#self-attention-visualization)
+  - [Encoder-Decoder Attention](#encoder-decoder-attention)
+  - [Compare Attention Maps](#compare-attention-maps)
+  - [Visualize Attention Stability](#visualize-attention-stability)
+  - [Attention Evolution Over Time](#attention-evolution-over-time)
+  - [Detected Attention Regions](#detected-attention-regions)
 - [Function Reference](#function-reference)
-  - [`visualize_attention_encoder_only`](#visualize_attention_encoder_only)
-  - [`visualize_attention_decoder_only`](#visualize_attention_decoder_only)
+  - [`visualize_attention_self_attention`](#visualize_attention_self_attention)
   - [`visualize_attention_encoder_decoder`](#visualize_attention_encoder_decoder)
+  - [`compare_two_attentions_with_circles`](#compare_two_attentions_with_circles)
+  - [`check_stability_heatmap_with_gradient_color`](#check_stability_heatmap_with_gradient_color)
+  - [`visualize_attention_evolution_sparklines`](#visualize_attention_evolution_sparklines)
+  - [`visualize_attention_with_detected_regions`](#visualize_attention_with_detected_regions)
+  - [`find_attention_regions_with_merging`](#find_attention_regions_with_merging)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -32,17 +34,20 @@
   - **Encoder-Decoder Models** (e.g., T5, BART)
 - **Multiple Visualization Modes**:
   - **Self-Attention**
-  - **Question-Context Attention**
   - **Cross-Attention**
-  - **Generated-to-Source Attention**
+- **Advanced Analysis Features**:
+  - **Compare attention patterns** between different models or layers
+  - **Visualize attention stability** across multiple runs
+  - **Track attention evolution** over training epochs
+  - **Automatic region detection** to highlight important attention patterns
 - **Highlighting and Annotation**:
-  - Highlights top attention scores with enlarged cells and annotations.
-  - Customizable region highlighting with red boxes around specified areas.
+  - Highlights top attention scores with enlarged cells and annotations
+  - Customizable region highlighting with boxes around specified areas
 - **Customizable Visualization**:
-  - Adjustable color mapping and normalization.
-  - Configurable parameters to suit different analysis needs.
+  - Adjustable color mapping and normalization
+  - Configurable parameters to suit different analysis needs
 - **High-Quality Outputs**:
-  - Generates heatmaps saved as PDF files for easy sharing and publication.
+  - Generates heatmaps saved as PDF files for easy sharing and publication
 
 ## Installation
 
@@ -70,11 +75,12 @@ These dependencies will be installed automatically when you install **IzzyViz** 
 
 ## Quick Start
 
-Here's a quick example of how to use **IzzyViz** to visualize self-attention in an encoder-only model (e.g., BERT):
+Here's a quick example of how to use **IzzyViz** to visualize self-attention in a transformer model:
 
 ```python
 from transformers import BertTokenizer, BertModel
 import torch
+from izzyviz import visualize_attention_self_attention
 
 # Load model and tokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -95,34 +101,31 @@ left_top_cells = [(4, 4)]   # Starting cell (row index, column index)
 right_bottom_cells = [(8, 8)]  # Ending cell (row index, column index)
 
 # Visualize attention
-visualize_attention_encoder_only(
-    attentions,
-    tokens,
+visualize_attention_self_attention(
+    attentions=attentions,
+    tokens=tokens,
     layer=-1,
-    head=8,
+    head=0,
     top_n=5,
-    mode='self_attention',
     left_top_cells=left_top_cells,
     right_bottom_cells=right_bottom_cells,
-    plot_titles=["Custom Self-Attention Heatmap Title"]
+    plot_titles=["Self-Attention Heatmap"]
 )
 ```
 
-This will generate a heatmap PDF file named `self_attention_heatmap.pdf`.
+This will generate a heatmap PDF file showing the self-attention patterns.
 ![quick_start.jpg](images/quick_start.jpg)
 
 ## Usage Examples
 
-### Encoder-Only Models
+### Self-Attention Visualization
 
-#### Self-Attention Mode
-
-**Description**: Visualizes self-attention within a single sentence in an encoder-only model like BERT.
+**Description**: Visualizes self-attention within a sequence in transformer models.
 
 **Example**:
 
 ```python
-from izzyviz.visualization import visualize_attention_encoder_only
+from izzyviz import visualize_attention_self_attention
 from transformers import BertTokenizer, BertModel
 import torch
 
@@ -130,7 +133,7 @@ import torch
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 model = BertModel.from_pretrained('bert-base-uncased', output_attentions=True)
 
-# Single sentence input
+# Input text
 sentence = "Deep learning models are revolutionizing AI."
 inputs = tokenizer(sentence, return_tensors="pt", add_special_tokens=True)
 tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
@@ -141,7 +144,7 @@ with torch.no_grad():
     attentions = outputs.attentions
 
 # Visualize self-attention
-visualize_attention_encoder_only(
+visualize_attention_self_attention(
     attentions=attentions,
     tokens=tokens,
     layer=-1,    # Last layer
@@ -150,218 +153,166 @@ visualize_attention_encoder_only(
 )
 ```
 
-**Output**: A PDF file named `self_attention_heatmap.pdf`.
+### Encoder-Decoder Attention
 
-#### Question-Context Mode
-
-**Description**: Visualizes attention between a question and a context passage in an encoder-only model.
+**Description**: Visualizes cross-attention between the decoder and encoder outputs in an encoder-decoder model.
 
 **Example**:
 
 ```python
-from izzyviz.visualization import visualize_attention_encoder_only
-from transformers import BertTokenizer, BertModel
+from izzyviz import visualize_attention_encoder_decoder
+from transformers import T5Tokenizer, T5ForConditionalGeneration
 import torch
-
-# Load model and tokenizer
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertModel.from_pretrained('bert-base-uncased', output_attentions=True)
-
-# Prepare input sentences
-question = "What is the capital of France?"
-context = "Paris is the capital city of France, known for its art, fashion, and culture."
-inputs = tokenizer(question, context, return_tensors="pt", add_special_tokens=True)
-
-input_ids = inputs['input_ids']
-token_type_ids = inputs['token_type_ids'][0]
-question_end = (token_type_ids == 0).sum().item()  # Index where question ends
-tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-
-# Get attention weights
-with torch.no_grad():
-    outputs = model(**inputs)
-    attentions = outputs.attentions
-
-# Visualize question-context attention
-visualize_attention_encoder_only(
-    attentions=attentions,
-    tokens=tokens,
-    layer=-1,        # Last layer
-    head=0,          # First attention head
-    question_end=question_end,
-    mode='question_context'
-)
-```
-
-**Output**: A PDF file named `QC_attention_heatmaps.pdf` containing five subplots showing different attention patterns between the question and context.
-
-### Decoder-Only Models
-
-#### Full Sequence
-
-**Description**: Visualizes self-attention over the full input sequence in a decoder-only model like GPT-2.
-
-**Example**:
-
-```python
-from izzyviz.visualization import visualize_attention_decoder_only
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
-import torch
-
-# Load model and tokenizer
-tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-model = GPT2LMHeadModel.from_pretrained('gpt2', output_attentions=True)
-model.eval()
-
-# Input source text
-source_text = "Once upon a time, in a faraway land, there lived a wise old man."
-input_ids = tokenizer.encode(source_text, return_tensors='pt')
-source_tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-
-# Get attention weights
-with torch.no_grad():
-    outputs = model(input_ids)
-    attentions = outputs.attentions  # List of attention matrices from each layer
-
-# Visualize full sequence attention
-visualize_attention_decoder_only(
-    attentions=attentions,
-    source_tokens=source_tokens,
-    generated_tokens=[],  # No generated tokens
-    layer=-1,             # Last layer
-    head=0,               # First attention head
-    use_case='full_sequence'
-)
-```
-
-**Output**: A PDF file named `decoder_self_attention_heatmap.pdf`.
-
-#### Generated-to-Source Attention
-
-**Description**: Visualizes how generated tokens attend to source tokens in a decoder-only model.
-
-**Example**:
-
-```python
-from izzyviz.visualization import visualize_attention_decoder_only
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
-import torch
-
-# Load model and tokenizer
-tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-model = GPT2LMHeadModel.from_pretrained('gpt2', output_attentions=True)
-model.eval()
-
-# Input source text
-source_text = "Climate change is a pressing issue"
-input_ids = tokenizer.encode(source_text, return_tensors='pt')
-source_tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-
-# Generate text
-max_length = input_ids.shape[1] + 10
-with torch.no_grad():
-    outputs = model.generate(
-        input_ids,
-        max_length=max_length,
-        output_attentions=True,
-        return_dict_in_generate=True
-    )
-
-# Get the full sequence
-full_input_ids = outputs.sequences
-full_tokens = tokenizer.convert_ids_to_tokens(full_input_ids[0])
-generated_tokens = full_tokens[len(source_tokens):]
-
-# Get attentions for the full sequence
-with torch.no_grad():
-    full_outputs = model(full_input_ids)
-    attentions = full_outputs.attentions
-
-# Visualize generated-to-source attention
-visualize_attention_decoder_only(
-    attentions=attentions,
-    source_tokens=source_tokens,
-    generated_tokens=generated_tokens,
-    layer=-1,               # Last layer
-    head=0,                 # First attention head
-    use_case='generated_to_source'
-)
-```
-
-**Output**: A PDF file named `decoder_generated_to_source_attention_heatmap.pdf`.
-
-### Encoder-Decoder Models
-
-#### Cross-Attention
-
-**Description**: Visualizes cross-attention between the decoder and encoder outputs in an encoder-decoder model like T5.
-
-**Example**:
-
-```python
-from transformers import T5ForConditionalGeneration, T5Tokenizer
-import torch
-import matplotlib.pyplot as plt
 import numpy as np
 
 # Load model and tokenizer
-model_name = "t5-small"  # Replace with your desired model
-tokenizer = T5Tokenizer.from_pretrained(model_name)
-model = T5ForConditionalGeneration.from_pretrained(model_name, output_attentions=True)
+tokenizer = T5Tokenizer.from_pretrained('t5-small')
+model = T5ForConditionalGeneration.from_pretrained('t5-small', output_attentions=True)
 
 # Input source text
-source_text = "I am happy."
+source_text = "translate English to German: I am happy."
 input_ids = tokenizer(source_text, return_tensors="pt").input_ids
 
-# Generate output text (inference)
-output = model.generate(input_ids, return_dict_in_generate=True, output_attentions=True, max_new_tokens=10)
-generated_tokens = tokenizer.convert_ids_to_tokens(output.sequences[0])
+# Generate output text
+outputs = model.generate(
+    input_ids,
+    return_dict_in_generate=True,
+    output_attentions=True,
+    max_new_tokens=10
+)
 
-# Extract cross-attention weights
-cross_attentions = output.cross_attentions  # Tuple of tuples
-
-# Specify parameters
-layer_index = -2  # Last layer
-head_index = 4    # Desired attention head
-
-# Collect attention scores for all generated tokens
-all_attention_scores = []
-for token_index in range(len(cross_attentions)):
-    attention_tensor = cross_attentions[token_index][layer_index]  # Attention for the given token and layer
-    head_attention = attention_tensor[0, head_index, :, :].squeeze(0).detach().numpy()  # Squeeze singleton dim
-    all_attention_scores.append(head_attention)
-
-# Stack attention scores for all tokens
-attention_matrix = np.vstack(all_attention_scores)
-
-# Filter out <pad> tokens from decoder tokens
-if len(generated_tokens) > attention_matrix.shape[0]:
-    generated_tokens = [token for token in generated_tokens if token != "<pad>"]
-
-# Ensure alignment with the attention matrix
-generated_tokens = generated_tokens[:attention_matrix.shape[0]]
-
-# Visualize cross-attention heatmap for the selected head
+# Get source and target tokens
 source_tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
+generated_tokens = tokenizer.convert_ids_to_tokens(outputs.sequences[0][input_ids.shape[1]:])
 
-# Plot the attention matrix
-visualize_attention_encoder_decoder(attention_matrix, source_tokens, generated_tokens)
+# Extract cross-attention from a specific layer and head
+cross_attentions = outputs.cross_attentions
+layer_idx = -1
+head_idx = 0
+attention_matrix = cross_attentions[0][layer_idx][0, head_idx].detach().numpy()
+
+# Visualize cross-attention
+visualize_attention_encoder_decoder(
+    attention_matrix=attention_matrix,
+    encoder_tokens=source_tokens,
+    decoder_tokens=generated_tokens,
+    top_n=3
+)
 ```
 
-**Output**: A PDF file named `cross_attention_heatmap.pdf`.
+### Compare Attention Maps
+
+**Description**: Compares two attention matrices using a visualization with circles to highlight differences.
+
+**Example**:
+
+```python
+from izzyviz import compare_two_attentions_with_circles
+import numpy as np
+
+# Create sample attention matrices
+tokens = ["[CLS]", "Hello", "world", "!"]
+attn1 = np.random.rand(4, 4)  # First attention matrix
+attn2 = np.random.rand(4, 4)  # Second attention matrix
+
+# Visualize the comparison
+compare_two_attentions_with_circles(
+    attn1=attn1,
+    attn2=attn2,
+    tokens=tokens,
+    title="Comparing Two Attention Patterns",
+    circle_scale=1.0
+)
+```
+
+### Visualize Attention Stability
+
+**Description**: Visualizes the stability of attention patterns across multiple runs or samples.
+
+**Example**:
+
+```python
+from izzyviz import check_stability_heatmap_with_gradient_color
+import numpy as np
+
+# Create sample attention matrices (list of matrices from different runs)
+tokens = ["[CLS]", "Hello", "world", "!"]
+matrices = [np.random.rand(4, 4) for _ in range(5)]  # 5 different runs
+
+# Visualize stability with gradient-colored circles
+check_stability_heatmap_with_gradient_color(
+    matrices=matrices,
+    x_labels=tokens,
+    y_labels=tokens,
+    title="Attention Stability Across Runs",
+    use_std_error=True,
+    circle_scale=1.0
+)
+```
+
+### Attention Evolution Over Time
+
+**Description**: Visualizes how attention patterns evolve over time (e.g., training epochs).
+
+**Example**:
+
+```python
+from izzyviz import visualize_attention_evolution_sparklines
+import numpy as np
+
+# Create sample attention matrices for different epochs
+tokens = ["[CLS]", "Hello", "world", "!"]
+num_epochs = 10
+attentions_over_time = np.random.rand(num_epochs, 4, 4)  # 10 epochs, 4x4 attention matrices
+
+# Visualize evolution with sparklines
+visualize_attention_evolution_sparklines(
+    attentions_over_time=attentions_over_time,
+    tokens=tokens,
+    title="Attention Evolution Over Training"
+)
+```
+
+### Detected Attention Regions
+
+**Description**: Automatically detects and highlights important regions in attention maps.
+
+**Example**:
+
+```python
+from izzyviz import visualize_attention_with_detected_regions, find_attention_regions_with_merging
+import numpy as np
+
+# Create a sample attention matrix
+tokens = ["[CLS]", "Hello", "world", "!", "[SEP]"]
+attention_matrix = np.random.rand(5, 5)
+attention_matrix[1:3, 1:3] = 0.9  # Create a region of high attention
+
+# Visualize with automatically detected regions
+visualize_attention_with_detected_regions(
+    attention_matrix=attention_matrix,
+    source_tokens=tokens,
+    target_tokens=tokens,
+    title="Attention with Detected Regions",
+    n_regions=2,
+    region_color='orange'
+)
+```
 
 ## Function Reference
 
-### `visualize_attention_encoder_only`
+### `visualize_attention_self_attention`
 
 **Signature**:
 
 ```python
-visualize_attention_encoder_only(
+visualize_attention_self_attention(
     attentions,
     tokens,
     layer,
     head,
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
     question_end=None,
     top_n=3,
     enlarged_size=1.8,
@@ -369,76 +320,19 @@ visualize_attention_encoder_only(
     mode='self_attention',
     plot_titles=None,
     left_top_cells=None,
-    right_bottom_cells=None
-)
-```
-
-**Parameters**:
-
-- `attentions`: List of attention matrices from the model.
-- `tokens`: List of token labels to display on the heatmaps.
-- `layer`: The layer number of the attention to visualize.
-- `head`: The head number of the attention to visualize.
-- `question_end`: The index where the first sentence ends in the token list (used in `question_context` mode).
-- `top_n`: The number of top attention scores to highlight.
-- `enlarged_size`: Factor by which to enlarge the top cells.
-- `gamma`: Gamma value for the power normalization of the colormap.
-- `mode`: The mode of visualization (`'self_attention'` or `'question_context'`).
-- `plot_titles`: List of titles for the subplots. If `None`, default titles are used.
-- `left_top_cells`: List of (row, col) tuples for the top-left cells of regions to highlight.
-- `right_bottom_cells`: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-
-**Description**:
-
-Visualizes attention matrices for encoder-only models in different modes. Generates heatmaps saved as PDF files.
-
----
-
-### `visualize_attention_decoder_only`
-
-**Signature**:
-
-```python
-visualize_attention_decoder_only(
-    attentions,
-    source_tokens,
-    generated_tokens,
-    layer,
-    head,
-    top_n=3,
-    enlarged_size=1.8,
-    gamma=1.5,
-    plot_titles=None,
-    left_top_cells=None,
     right_bottom_cells=None,
-    use_case='full_sequence'
+    auto_detect_regions=False,
+    save_path=None,
+    length_threshold=64,
+    if_interval=False,
+    if_top_cells=True,
+    interval=10,
+    show_scores_in_enlarged_cells=True
 )
 ```
 
-**Parameters**:
-
-- `attentions`: List of attention matrices from the model.
-- `source_tokens`: List of source token labels.
-- `generated_tokens`: List of generated token labels.
-- `layer`: The layer number of the attention to visualize.
-- `head`: The head number of the attention to visualize.
-- `top_n`: The number of top attention scores to highlight.
-- `enlarged_size`: Factor by which to enlarge the top cells.
-- `gamma`: Gamma value for the power normalization of the colormap.
-- `plot_titles`: List of titles for the subplots. If `None`, default titles are used.
-- `left_top_cells`: List of (row, col) tuples for the top-left cells of regions to highlight.
-- `right_bottom_cells`: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-- `use_case`: The specific use case to visualize. Options are:
-  - `'full_sequence'`: Input sequence attending to itself.
-  - `'self_attention_source'`: Self-Attention for source tokens.
-  - `'generated_to_source'`: Generated tokens attending to source tokens.
-  - `'self_attention_generated'`: Self-Attention for generated tokens.
-
 **Description**:
-
-Visualizes attention matrices for decoder-only models in different use cases. Generates heatmaps saved as PDF files.
-
----
+Visualizes self-attention patterns in transformer models with various customization options for highlighting important attention scores and regions.
 
 ### `visualize_attention_encoder_decoder`
 
@@ -447,57 +341,154 @@ Visualizes attention matrices for decoder-only models in different use cases. Ge
 ```python
 visualize_attention_encoder_decoder(
     attention_matrix,
-    source_tokens,
-    generated_tokens,
+    encoder_tokens,
+    decoder_tokens,
+    xlabel=None,
+    ylabel=None,
     top_n=3,
     enlarged_size=1.8,
     gamma=1.5,
     plot_title=None,
     left_top_cells=None,
     right_bottom_cells=None,
-    save_path="cross_attention_heatmap.pdf",
+    save_path=None,
     use_case='cross_attention'
 )
 ```
 
-**Parameters**:
-
-- `attention_matrix`: The attention matrix (NumPy array or PyTorch tensor).
-- `source_tokens`: List of source token labels.
-- `generated_tokens`: List of generated token labels.
-- `top_n`: The number of top attention scores to highlight.
-- `enlarged_size`: Factor by which to enlarge the top cells.
-- `gamma`: Gamma value for the power normalization of the colormap.
-- `plot_title`: Title for the plot.
-- `left_top_cells`: List of (row, col) tuples for the top-left cells of regions to highlight.
-- `right_bottom_cells`: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-- `save_path`: File path to save the generated heatmap PDF.
-- `use_case`: Type of attention to visualize. Options are:
-  - `'cross_attention'`
-  - `'encoder_self_attention'`
-  - `'decoder_self_attention'`
-
 **Description**:
+Visualizes cross-attention between encoder and decoder components in encoder-decoder models, showing how decoder tokens attend to encoder tokens.
 
-Visualizes attention matrices for encoder-decoder models in different use cases. Generates heatmaps saved as PDF files.
+### `compare_two_attentions_with_circles`
 
----
-
-**Specifying Regions to Highlight**:
-
-- The heatmap grid uses zero-based indexing.
-- Row indices increase from top to bottom.
-- Column indices increase from left to right.
-- Indices must be within the dimensions of the attention matrix.
-
-**Example**:
-
-To highlight a region from row 1 to row 3 and column 2 to column 4:
+**Signature**:
 
 ```python
-left_top_cells = [(1, 2)]
-right_bottom_cells = [(3, 4)]
+compare_two_attentions_with_circles(
+    attn1,
+    attn2,
+    tokens,
+    title="Comparison with Circles",
+    xlabel=None,
+    ylabel=None,
+    save_path=None,
+    circle_scale=1.0,
+    gamma=1.5,
+    cmap="Blues",
+    max_circle_ratio=0.45
+)
 ```
+
+**Description**:
+Compares two attention matrices using a visualization technique that shows the base attention as a heatmap and the differences as circles of varying sizes.
+
+### `check_stability_heatmap_with_gradient_color`
+
+**Signature**:
+
+```python
+check_stability_heatmap_with_gradient_color(
+    matrices,
+    x_labels=None,
+    y_labels=None,
+    title="Check Stability Heatmap with Gradient Circles",
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
+    ax=None,
+    use_std_error=True,
+    circle_scale=1.0,
+    cmap="Blues",
+    linecolor="white",
+    linewidths=1.0,
+    save_path="check_stability_heatmap_with_gradient_color.pdf",
+    gamma=1.5,
+    radial_resolution=100,
+    use_white_center=True,
+    color_contrast_scale=2.0,
+    max_circle_ratio=0.45
+)
+```
+
+**Description**:
+Visualizes the stability (variance) of attention patterns across multiple runs or samples using gradient-colored circles to represent the mean and standard error/deviation.
+
+### `visualize_attention_evolution_sparklines`
+
+**Signature**:
+
+```python
+visualize_attention_evolution_sparklines(
+    attentions_over_time,
+    tokens=None,
+    layer=None,
+    head=None,
+    title="Attention Evolution Over Training",
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
+    figsize=(12, 10),
+    sparkline_color_dark="darkblue",
+    sparkline_color_light="white",
+    sparkline_linewidth=1.0,
+    sparkline_alpha=0.8,
+    gamma=1.5,
+    normalize_sparklines=True,
+    save_path="attention_evolution_sparklines.pdf"
+)
+```
+
+**Description**:
+Visualizes how attention patterns evolve over time (e.g., training epochs) using sparklines embedded in each cell of the attention matrix.
+
+### `visualize_attention_with_detected_regions`
+
+**Signature**:
+
+```python
+visualize_attention_with_detected_regions(
+    attention_matrix,
+    source_tokens,
+    target_tokens,
+    title="Attention with Detected Regions",
+    xlabel="Tokens Attended to",
+    ylabel="Tokens Attending",
+    n_regions=3,
+    min_distance=2,
+    expansion_threshold=0.9,
+    merge_threshold=0.6,
+    region_color='orange',
+    region_linewidth=2,
+    region_alpha=0.7,
+    label_regions=False,
+    gamma=1.5,
+    save_path="attention_with_detected_regions.pdf",
+    ax=None,
+    cmap="Blues",
+    max_expansion_steps=3,
+    proximity_threshold=2
+)
+```
+
+**Description**:
+Visualizes attention matrices with automatically detected important regions highlighted with colored boxes.
+
+### `find_attention_regions_with_merging`
+
+**Signature**:
+
+```python
+find_attention_regions_with_merging(
+    attention_matrix,
+    n_seeds=3,
+    min_distance=2,
+    expansion_threshold=0.8,
+    merge_std_threshold=0.8,
+    proximity_threshold=2,
+    max_expansion_steps=3
+)
+```
+
+**Description**:
+Identifies important regions in an attention matrix by finding high-attention seeds and expanding them, then merging nearby regions with similar attention patterns.
 
 ## Contributing
 
@@ -511,12 +502,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 # Changelog
 
-- **Updated Functionality**: The `visualize_attention` function has been replaced with specialized functions for different model architectures.
-  - `visualize_attention_encoder_only`
-  - `visualize_attention_decoder_only`
+- **Updated Function Exports**: The library now exports these specialized visualization functions:
+  - `visualize_attention_self_attention`
   - `visualize_attention_encoder_decoder`
-- **Enhanced Flexibility**: The new functions provide more control and customization options for different use cases.
-- **Improved Documentation**: The README and function docstrings have been updated to reflect the new changes.
+  - `compare_two_attentions_with_circles`
+  - `check_stability_heatmap_with_gradient_color`
+  - `visualize_attention_evolution_sparklines`
+  - `visualize_attention_with_detected_regions`
+  - `find_attention_regions_with_merging`
+- **Enhanced Visualization Capabilities**: Added support for comparing attention patterns, analyzing stability, and automatically detecting important regions.
+- **Improved Documentation**: The README and function descriptions have been updated to reflect the new capabilities.
 
 # Getting Help
 

@@ -227,7 +227,7 @@ def visualize_attention_self_attention(
     right_bottom_cells=None,
     auto_detect_regions=False, 
     save_path=None,
-    length_threshold=50,
+    length_threshold=64,
     if_interval=False,
     if_top_cells=True,
     interval=10,
@@ -376,7 +376,11 @@ def visualize_attention_self_attention(
         title = plot_titles[0]
 
         # Prepare data
-        data = attention_matrix.detach().cpu().numpy()
+        if isinstance(attention_matrix, np.ndarray):
+            data = attention_matrix  # It's already a NumPy array, no need to convert
+        else:
+            data = attention_matrix.detach().cpu().numpy()  # Convert PyTorch tensor to NumPy 
+        # data = attention_matrix.detach().cpu().numpy()
         global_vmin = data.min()
         global_vmax = data.max()
         norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
@@ -384,7 +388,11 @@ def visualize_attention_self_attention(
         # Find top attention cells
         top_cells = find_top_cells(data, top_n)
 
-        if len(tokens) > length_threshold:
+        # Set background_color based on whether sparse labels are used
+        is_sparse = len(tokens) > length_threshold
+        use_background_color = not is_sparse  # Only use background color when NOT using sparse labels
+        
+        if is_sparse:
             x_labels = generate_sparse_labels(tokens, top_cells, 1, interval=interval, if_interval=if_interval, if_top_cells=if_top_cells)
             y_labels = generate_sparse_labels(tokens, top_cells, 0, interval=interval, if_interval=if_interval, if_top_cells=if_top_cells)
             show_scores = False
@@ -423,11 +431,11 @@ def visualize_attention_self_attention(
             left_top_cells=left_top_cells,
             right_bottom_cells=right_bottom_cells,
             show_scores=show_scores,
-            background_color=False
+            background_color=use_background_color  # Use background color only for non-sparse labels
         )
 
         # If using sparse labels, set custom ticks to only show where labels exist
-        if len(tokens) > length_threshold:
+        if is_sparse:
             # Find positions with non-empty labels
             x_tick_indices = [i for i, label in enumerate(x_labels) if label]
             y_tick_indices = [i for i, label in enumerate(y_labels) if label]
@@ -834,7 +842,7 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
         gamma=gamma,
         left_top_cells=left_top_cells,
         right_bottom_cells=right_bottom_cells,
-        lean_more=True
+        lean_more=False
     )
 
     plt.tight_layout()
