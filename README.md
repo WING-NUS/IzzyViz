@@ -161,41 +161,22 @@ visualize_attention_self_attention(
 
 ```python
 from izzyviz import visualize_attention_encoder_decoder
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-import torch
-import numpy as np
+from transformers import AutoTokenizer, AutoModel
 
-# Load model and tokenizer
-tokenizer = T5Tokenizer.from_pretrained('t5-small')
-model = T5ForConditionalGeneration.from_pretrained('t5-small', output_attentions=True)
+tokenizer = AutoTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-de")
+model = AutoModel.from_pretrained("Helsinki-NLP/opus-mt-en-de", output_attentions=True)
+encoder_input_ids = tokenizer("The environmental scientists have discovered that climate change is affecting biodiversity in remote mountain regions.", return_tensors="pt", add_special_tokens=True).input_ids
+with tokenizer.as_target_tokenizer():
+    decoder_input_ids = tokenizer("Die Umweltwissenschaftler haben entdeckt, dass der Klimawandel die Artenvielfalt in abgelegenen Bergregionen beeinflusst.", return_tensors="pt", add_special_tokens=True).input_ids
 
-# Input source text
-source_text = "translate English to German: I am happy."
-input_ids = tokenizer(source_text, return_tensors="pt").input_ids
+outputs = model(input_ids=encoder_input_ids, decoder_input_ids=decoder_input_ids)
+encoder_text = tokenizer.convert_ids_to_tokens(encoder_input_ids[0])
+decoder_text = tokenizer.convert_ids_to_tokens(decoder_input_ids[0])
 
-# Generate output text
-outputs = model.generate(
-    input_ids,
-    return_dict_in_generate=True,
-    output_attentions=True,
-    max_new_tokens=10
-)
-
-# Get source and target tokens
-source_tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
-generated_tokens = tokenizer.convert_ids_to_tokens(outputs.sequences[0][input_ids.shape[1]:])
-
-# Extract cross-attention from a specific layer and head
-cross_attentions = outputs.cross_attentions
-layer_idx = -1
-head_idx = 0
-attention_matrix = cross_attentions[0][layer_idx][0, head_idx].detach().numpy()
-
-# Visualize cross-attention
 visualize_attention_encoder_decoder(
-    attention_matrix=attention_matrix,
-    encoder_tokens=source_tokens,
-    decoder_tokens=generated_tokens,
+    attention_matrix=outputs.cross_attentions[0][0, 3],
+    encoder_tokens=encoder_text,
+    decoder_tokens=decoder_text,
     top_n=3
 )
 ```
@@ -263,12 +244,14 @@ import numpy as np
 # Create sample attention matrices for different epochs
 tokens = ["[CLS]", "Hello", "world", "!"]
 num_epochs = 10
-attentions_over_time = np.random.rand(num_epochs, 4, 4)  # 10 epochs, 4x4 attention matrices
+attentions_over_time = np.random.rand(num_epochs, 12, 12, 4, 4)  # 10 epochs, 12 layers, 12 heads, 4x4 attention matrices
 
 # Visualize evolution with sparklines
 visualize_attention_evolution_sparklines(
     attentions_over_time=attentions_over_time,
     tokens=tokens,
+    layer=0,
+    head=0,
     title="Attention Evolution Over Training"
 )
 ```
