@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from matplotlib.colors import PowerNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib import patches  # Import patches to draw the rectangle
+from matplotlib import patches 
 from .utility import find_non_overlapping_locally_maximal_rectangles
 from matplotlib.patches import Wedge
 from matplotlib.lines import Line2D
@@ -82,7 +82,7 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     # cbar = ax.collections[0].colorbar  # Get the colorbar
 
     # Define the data values for ticks (evenly spaced)
-    num_ticks = 7 # Adjust the number of ticks as needed
+    num_ticks = 7 # Adjust the number of ticks
     tick_values = np.linspace(vmin, vmax, num_ticks)
 
     # Compute the positions along the colorbar where ticks should be placed
@@ -231,7 +231,8 @@ def visualize_attention_self_attention(
     if_interval=False,
     if_top_cells=True,
     interval=10,
-    show_scores_in_enlarged_cells=True  
+    show_scores_in_enlarged_cells=True,
+    lean_more=False  
 ):
     """
     Visualizes attention matrices for encoder-only and decoder-only models.
@@ -259,6 +260,7 @@ def visualize_attention_self_attention(
     - interval: Show a label every N tokens in sparse mode
     - show_scores_in_enlarged_cells: Whether to display attention scores in enlarged cells
                                     (automatically disabled in sparse labeling mode)
+    - lean_more: If True, rotate x-axis labels by 90 degrees
     """
     # Removes the first dimension if it is 1 (typically the batch size for a single input).
     attn = attentions[layer].squeeze(0)[head]
@@ -351,7 +353,8 @@ def visualize_attention_self_attention(
                 norm=norm,
                 gamma=gamma,
                 left_top_cells=left_top_cells,
-                right_bottom_cells=right_bottom_cells
+                right_bottom_cells=right_bottom_cells,
+                lean_more=lean_more
             )
 
         if save_path is None:
@@ -431,7 +434,8 @@ def visualize_attention_self_attention(
             left_top_cells=left_top_cells,
             right_bottom_cells=right_bottom_cells,
             show_scores=show_scores,
-            background_color=use_background_color  # Use background color only for non-sparse labels
+            background_color=use_background_color,  # Use background color only for non-sparse labels
+            lean_more=lean_more
         )
 
         # If using sparse labels, set custom ticks to only show where labels exist
@@ -736,7 +740,8 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
                                         xlabel=None, ylabel=None,
                                         top_n=3, enlarged_size=1.8, gamma=1.5,
                                         plot_title=None, left_top_cells=None, right_bottom_cells=None,
-                                        save_path=None, use_case='cross_attention'):
+                                        save_path=None, use_case='cross_attention',
+                                        lean_more=False):
     """
     Visualizes attention matrices for encoder-decoder models.
 
@@ -754,6 +759,7 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
     - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
     - save_path: File path to save the generated heatmap PDF.
     - use_case: Type of attention to visualize. Options are 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.
+    - lean_more: If True, rotate x-axis labels by 90 degrees
     """
 
     # Prepare data
@@ -842,7 +848,7 @@ def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decode
         gamma=gamma,
         left_top_cells=left_top_cells,
         right_bottom_cells=right_bottom_cells,
-        lean_more=False
+        lean_more=lean_more
     )
 
     plt.tight_layout()
@@ -909,8 +915,7 @@ def difference_heatmap(
     circle_color_positive="blue",
     circle_color_negative="red",
     ax=None,
-    gamma=1.5,  # Added gamma parameter for PowerNorm
-    cbar=True,
+    gamma=1.5,
     **kwargs
 ):
     """
@@ -2409,8 +2414,8 @@ def visualize_attention_evolution_sparklines(
     sparkline_color_light="white",
     sparkline_linewidth=1.0,
     sparkline_alpha=0.8,
-    gamma=1.5,  # For PowerNorm
-    normalize_sparklines=True,  # New parameter to control sparkline normalization
+    gamma=1.5,
+    normalize_sparklines=True,
     save_path="attention_evolution_sparklines.pdf"
 ):
     """
@@ -2423,19 +2428,14 @@ def visualize_attention_evolution_sparklines(
         head: Head index to extract (if needed)
         title: Plot title
         xlabel, ylabel: Axis labels
-        cmap: Colormap for the background
         figsize: Figure size
         sparkline_color_dark: Dark color for the sparklines
         sparkline_color_light: Light color for the sparklines
         sparkline_linewidth: Width of sparkline
         sparkline_alpha: Transparency of sparklines
-        background_alpha: Transparency of the background heatmap
         gamma: For PowerNorm color scaling
-        grid_color: Color for grid lines
-        grid_linewidth: Width of grid lines
         normalize_sparklines: Whether to normalize sparklines
         save_path: Path to save the figure
-        title_fontsize: Font size for the title
         
     Returns:
         matplotlib.axes.Axes: The axes containing the visualization

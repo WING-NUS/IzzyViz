@@ -1,6 +1,8 @@
 # IzzyViz
 
-**IzzyViz** is a Python library designed to visualize attention scores in transformer models. It provides flexible visualization functions that can handle different attention scenarios and model architectures, including encoder-only, decoder-only, and encoder-decoder models.
+**IzzyViz** is a Python library designed to visualize attention scores in [transformer](https://jalammar.github.io/illustrated-transformer/) models. It provides flexible visualization functions that can handle various attention scenarios and model architectures. Additionally, it offers three attention heatmap variants that enable comparisons between two attention matrices, visualize model stability, and track the evolution of attention patterns over training time steps. Lastly, it includes an automatic key region highlighting function to assist users in identifying important attention areas. The output of all functions is provided in a **static** PDF format, making it suitable for direct use in research writing.
+
+## 🚀 Quick Tour
 
 ## Table of Contents
 
@@ -36,9 +38,9 @@
   - **Self-Attention**
   - **Cross-Attention**
 - **Advanced Analysis Features**:
-  - **Compare attention patterns** between different models or layers
+  - **Compare attention patterns** between different heads or layers
   - **Visualize attention stability** across multiple runs
-  - **Track attention evolution** over training epochs
+  - **Track attention evolution** over training time steps
   - **Automatic region detection** to highlight important attention patterns
 - **Highlighting and Annotation**:
   - Highlights top attention scores with enlarged cells and annotations
@@ -102,14 +104,15 @@ right_bottom_cells = [(8, 8)]  # Ending cell (row index, column index)
 
 # Visualize attention
 visualize_attention_self_attention(
-    attentions=attentions,
-    tokens=tokens,
+    attentions,
+    tokens,
     layer=-1,
-    head=0,
-    top_n=5,
+    head=8,
+    top_n=4,
+    mode='self_attention',
     left_top_cells=left_top_cells,
     right_bottom_cells=right_bottom_cells,
-    plot_titles=["Self-Attention Heatmap"]
+    plot_titles=["Custom Self-Attention Heatmap Title"]
 )
 ```
 
