@@ -2,8 +2,6 @@
 
 **IzzyViz** is a Python library designed to visualize attention scores in [transformer](https://jalammar.github.io/illustrated-transformer/) models. It provides flexible visualization functions that can handle various attention scenarios and model architectures. Additionally, it offers three attention heatmap variants that enable comparisons between two attention matrices, visualize model stability, and track the evolution of attention patterns over training time steps. Lastly, it includes an automatic key region highlighting function to assist users in identifying important attention areas. The output of all functions is provided in a **static** PDF format, making it suitable for direct use in research writing.
 
-## 🚀 Quick Tour
-
 ## Table of Contents
 
 - [Features](#features)
@@ -12,11 +10,11 @@
 - [Quick Start](#quick-start)
 - [Usage Examples](#usage-examples)
   - [Self-Attention Visualization](#self-attention-visualization)
-  - [Encoder-Decoder Attention](#encoder-decoder-attention)
-  - [Compare Attention Maps](#compare-attention-maps)
-  - [Visualize Attention Stability](#visualize-attention-stability)
-  - [Attention Evolution Over Time](#attention-evolution-over-time)
-  - [Detected Attention Regions](#detected-attention-regions)
+  - [Cross-Attention Visualization](#cross-attention-visualization)
+  - [Comparison Heatmap](#comparison-heatmap)
+  - [Stability Heatmap](#stability-heatmap)
+  - [Evolution Heatmap](#evolution-heatmap)
+  - [Automatic Key Region Detection](#automatic-key-region-detection)
 - [Function Reference](#function-reference)
   - [`visualize_attention_self_attention`](#visualize_attention_self_attention)
   - [`visualize_attention_encoder_decoder`](#visualize_attention_encoder_decoder)
@@ -108,7 +106,7 @@ visualize_attention_self_attention(
     tokens,
     layer=-1,
     head=8,
-    top_n=4,
+    top_n=5,
     mode='self_attention',
     left_top_cells=left_top_cells,
     right_bottom_cells=right_bottom_cells,
@@ -123,42 +121,52 @@ This will generate a heatmap PDF file showing the self-attention patterns.
 
 ### Self-Attention Visualization
 
-**Description**: Visualizes self-attention within a sequence in transformer models.
+**Description**: This function includes two modes: "self_attention" and "question_context". The "self_attention" mode is designed for models that rely primarily on self-attention mechanisms, such as encoder-only models like BERT and decoder-only models like GPT. It visualizes how tokens attend to other tokens within the same sequence. The "question_context" mode is an extension of the self-attention mode and is intended for tasks like question answering, where there is a clear distinction between the query and its context.
 
 **Example**:
 
 ```python
-from izzyviz import visualize_attention_self_attention
 from transformers import BertTokenizer, BertModel
 import torch
+from izzyviz.visualization import visualize_attention_self_attention
 
-# Load model and tokenizer
+# Example usage
+# Load the model and tokenizer
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-model = BertModel.from_pretrained('bert-base-uncased', output_attentions=True)
+model = BertModel.from_pretrained('bert-base-uncased')
 
-# Input text
-sentence = "Deep learning models are revolutionizing AI."
-inputs = tokenizer(sentence, return_tensors="pt", add_special_tokens=True)
-tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+# Prepare example input
+sentence_A = "Where is the Eiffel Tower?"  # Question
+sentence_B = "The Eiffel Tower is located in Paris, France."  # Context
+inputs = tokenizer(sentence_A, sentence_B, return_tensors="pt", add_special_tokens=True)
+
+input_ids = inputs['input_ids']
+token_type_ids = inputs['token_type_ids'][0]
+question_end = (token_type_ids == 0).sum().item()  # Find the end of the question
 
 # Get attention weights
 with torch.no_grad():
-    outputs = model(**inputs)
+    outputs = model(**inputs, output_attentions=True)
     attentions = outputs.attentions
 
-# Visualize self-attention
+# Visualize attention and save to PDF
 visualize_attention_self_attention(
-    attentions=attentions,
-    tokens=tokens,
-    layer=-1,    # Last layer
-    head=0,      # First attention head
-    mode='self_attention'
+                    attentions,
+                    tokenizer.convert_ids_to_tokens(inputs['input_ids'][0]),
+                    layer=6,
+                    head=5,
+                    question_end=question_end,
+                    top_n=3,
+                    enlarged_size=2.3,
+                    mode='question_context'
 )
 ```
 
-### Encoder-Decoder Attention
+**Output**: [QC_attention_heatmaps.pdf]()
 
-**Description**: Visualizes cross-attention between the decoder and encoder outputs in an encoder-decoder model.
+### Cross-Attention Visualization
+
+**Description**: This function visualizes how decoder tokens attend to encoder tokens, revealing cross-sequence relationships essential for tasks like translation or summarization.
 
 **Example**:
 
@@ -184,34 +192,53 @@ visualize_attention_encoder_decoder(
 )
 ```
 
-### Compare Attention Maps
+**Output**:
 
-**Description**: Compares two attention matrices using a visualization with circles to highlight differences.
+![cross-attention_heatmap.jpg](images/cross-attention_heatmap.jpg)
+
+### Comparison Heatmap
+
+**Description**: When analyzing transformer models, researchers often need to compare attention patterns between different models, layers, heads, or before and after fine-tuning. IzzyViz addresses this challenge with the comparison heatmap with circles visualization. This novel approach preserves information from both attention matrices while intuitively highlighting their differences. The cell colors represent the actual attention values from the first input matrix, preserving the complete information from the first attention pattern. Each cell contains a circle whose color represents the attention value from the second input matrix, ensuring that information from the second attention pattern is also fully preserved. The size of each circle is proportional to the magnitude of difference between the two matrices at that position. Larger circles instantly draw the user’s attention to cells with greater differences, while smaller circles indicate similar attention values.
 
 **Example**:
 
 ```python
-from izzyviz import compare_two_attentions_with_circles
-import numpy as np
+import torch
+from transformers import BertTokenizer, BertModel
+from izzyviz.visualization import compare_two_attentions_with_circles
 
-# Create sample attention matrices
-tokens = ["[CLS]", "Hello", "world", "!"]
-attn1 = np.random.rand(4, 4)  # First attention matrix
-attn2 = np.random.rand(4, 4)  # Second attention matrix
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+model = BertModel.from_pretrained("bert-base-uncased")
 
-# Visualize the comparison
+text = "This is an example sentence for comparing two attention heads in BERT."
+inputs = tokenizer(text, return_tensors='pt')
+
+with torch.no_grad():
+    outputs = model(**inputs, output_attentions=True)
+
+attn_layer8 = outputs.attentions[7][0]
+attn_layer9 = outputs.attentions[8][0]
+
+# Get head 9 (index 8) from each layer
+attn_layer8_head9 = attn_layer8[8]
+attn_layer9_head9 = attn_layer9[8]
+
+tokens = tokenizer.convert_ids_to_tokens(inputs["input_ids"][0])
+
 compare_two_attentions_with_circles(
-    attn1=attn1,
-    attn2=attn2,
+    attn1=attn_layer8_head9,
+    attn2=attn_layer9_head9,
     tokens=tokens,
-    title="Comparing Two Attention Patterns",
-    circle_scale=1.0
+    title="Comparison: Layer 8 Head 9 vs Layer 9 Head 9"
 )
 ```
 
-### Visualize Attention Stability
+**Output**:
+![comparison_heatmap.jpg](images/comparison_heatmap.jpg)
 
-**Description**: Visualizes the stability of attention patterns across multiple runs or samples.
+### Stability Heatmap
+
+**Description**: When developing transformer models, researchers often need to assess the stability of attention patterns across different training runs to gain deeper insights into model behavior. IzzyViz addresses this challenge with the stability heatmap visualization, which elegantly combines average attention values with visual representations of variability. Each cell’s background color represents the average attention score across all N training runs. The size of each circle is proportional to the confidence interval at each position. Larger circles instantly highlight positions with greater variability across training runs, indicating less stable attention patterns. Each circle features a gradient that transitions from the lower bound of all attention scores at the center to the upper bound of all attention scores at the edge.
 
 **Example**:
 
@@ -219,24 +246,34 @@ compare_two_attentions_with_circles(
 from izzyviz import check_stability_heatmap_with_gradient_color
 import numpy as np
 
-# Create sample attention matrices (list of matrices from different runs)
-tokens = ["[CLS]", "Hello", "world", "!"]
-matrices = [np.random.rand(4, 4) for _ in range(5)]  # 5 different runs
+# Load previously saved attention matrices from five training runs
+attn_array = np.load("attention_matrices_5_runs_test_sample.npy")
 
-# Visualize stability with gradient-colored circles
+# Specify layer and head index
+layer_idx = 6
+head_idx = 9
+
+# Step 1: extract (5, 64, 64) at specific layer and head
+attn_head = attn_array[:, layer_idx, head_idx, :, :]  # shape: (5, 64, 64)
+
+# Step 2: extract first 24 tokens (submatrix)
+attn_submatrix = attn_head[:, :24, :24]  # shape: (5, 24, 24)
+
+labels = ['[CLS]', 'starts', 'off', 'with', 'a', 'bang', ',', 'but', 'then', 'fi', '##zzle', '##s', 'like', 'a', 'wet', 'stick', 'of', 'dynamite', 'at', 'the', 'very', 'end', '.', '[SEP]']
+
 check_stability_heatmap_with_gradient_color(
-    matrices=matrices,
-    x_labels=tokens,
-    y_labels=tokens,
-    title="Attention Stability Across Runs",
-    use_std_error=True,
-    circle_scale=1.0
+    attn_submatrix,
+    x_labels=labels,
+    y_labels=labels
 )
 ```
 
-### Attention Evolution Over Time
+**Output**:
+![stability_heatmap.jpg](images/stability_heatmap.jpg)
 
-**Description**: Visualizes how attention patterns evolve over time (e.g., training epochs).
+### Evolution Heatmap
+
+**Description**: While standard attention visualizations provide a snapshot of attention patterns at a single point in time, researchers often need to understand how these patterns develop and stabilize throughout the training process. IzzyViz addresses this challenge with the evolution heatmap visualization, which integrates temporal information directly into the heatmap structure. Each cell’s background color represents the average attention score across all training time steps, providing a reference point for the overall attention pattern. At the center of each cell, a sparkline (mini line chart) visualizes the trend of the attention score over training steps.
 
 **Example**:
 
@@ -244,46 +281,57 @@ check_stability_heatmap_with_gradient_color(
 from izzyviz import visualize_attention_evolution_sparklines
 import numpy as np
 
-# Create sample attention matrices for different epochs
-tokens = ["[CLS]", "Hello", "world", "!"]
-num_epochs = 10
-attentions_over_time = np.random.rand(num_epochs, 12, 12, 4, 4)  # 10 epochs, 12 layers, 12 heads, 4x4 attention matrices
+# Load previously saved attention matrices from 5 training epochs
+attention_matrices = np.load("attention_matrices_epochs.npy")  # shape: (5, 12, 12, 64, 64)
 
-# Visualize evolution with sparklines
+# Extract attention matrices across epochs
+selected = attention_matrices[:, :, :, :19, :19]
+
 visualize_attention_evolution_sparklines(
-    attentions_over_time=attentions_over_time,
-    tokens=tokens,
-    layer=0,
-    head=0,
-    title="Attention Evolution Over Training"
+    selected,
+    tokens=['[CLS]', 'as', 'they', 'come', ',', 'already', 'having', 'been', 'recycled', 'more', 'times', 'than', 'i', "'", 'd', 'care', 'to', 'count', '[SEP]'],
+    layer=11,
+    head=9
 )
 ```
 
-### Detected Attention Regions
+**Output**:
+![evolution_heatmap.jpg](images/evolution_heatmap.jpg)
 
-**Description**: Automatically detects and highlights important regions in attention maps.
+### Automatic Key Region Detection
+
+**Description**: This algorithm helps to automatically identify and highlight significant attention patterns within heatmaps.
 
 **Example**:
 
 ```python
-from izzyviz import visualize_attention_with_detected_regions, find_attention_regions_with_merging
-import numpy as np
+from izzyviz import visualize_attention_with_detected_regions
+from transformers import BertTokenizer, BertModel
+import torch
 
-# Create a sample attention matrix
-tokens = ["[CLS]", "Hello", "world", "!", "[SEP]"]
-attention_matrix = np.random.rand(5, 5)
-attention_matrix[1:3, 1:3] = 0.9  # Create a region of high attention
+# Load model and tokenizer
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertModel.from_pretrained('bert-base-uncased')
 
-# Visualize with automatically detected regions
+# Single sentence input
+sentence = "The quick brown fox jumps over the lazy dog while a cat watches from behind the tree."
+inputs = tokenizer(sentence, return_tensors="pt", add_special_tokens=True)
+tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'][0])
+
+# Get attention weights
+with torch.no_grad():
+    outputs = model(**inputs, output_attentions=True)
+    attentions = outputs.attentions
+
 visualize_attention_with_detected_regions(
-    attention_matrix=attention_matrix,
+    attention_matrix=attentions[0][0, 3],
     source_tokens=tokens,
-    target_tokens=tokens,
-    title="Attention with Detected Regions",
-    n_regions=2,
-    region_color='orange'
+    target_tokens=tokens
 )
 ```
+
+**Output**:
+![region_detection.jpg](images/region_detection.jpg)
 
 ## Function Reference
 
@@ -313,7 +361,8 @@ visualize_attention_self_attention(
     if_interval=False,
     if_top_cells=True,
     interval=10,
-    show_scores_in_enlarged_cells=True
+    show_scores_in_enlarged_cells=True,
+    lean_more=False
 )
 ```
 
@@ -338,7 +387,8 @@ visualize_attention_encoder_decoder(
     left_top_cells=None,
     right_bottom_cells=None,
     save_path=None,
-    use_case='cross_attention'
+    use_case='cross_attention',
+    lean_more=False
 )
 ```
 
@@ -389,14 +439,14 @@ check_stability_heatmap_with_gradient_color(
     save_path="check_stability_heatmap_with_gradient_color.pdf",
     gamma=1.5,
     radial_resolution=100,
-    use_white_center=True,
+    use_white_center=False,
     color_contrast_scale=2.0,
     max_circle_ratio=0.45
 )
 ```
 
 **Description**:
-Visualizes the stability (variance) of attention patterns across multiple runs or samples using gradient-colored circles to represent the mean and standard error/deviation.
+Visualizes the stability (variance) of attention patterns across multiple runs using gradient-colored circles to represent the mean and standard error/deviation.
 
 ### `visualize_attention_evolution_sparklines`
 
@@ -417,7 +467,7 @@ visualize_attention_evolution_sparklines(
     sparkline_linewidth=1.0,
     sparkline_alpha=0.8,
     gamma=1.5,
-    normalize_sparklines=True,
+    normalize_sparklines=False,
     save_path="attention_evolution_sparklines.pdf"
 )
 ```
@@ -466,8 +516,8 @@ find_attention_regions_with_merging(
     attention_matrix,
     n_seeds=3,
     min_distance=2,
-    expansion_threshold=0.8,
-    merge_std_threshold=0.8,
+    expansion_threshold=0.7,
+    merge_std_threshold=0.6,
     proximity_threshold=2,
     max_expansion_steps=3
 )
@@ -496,7 +546,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
   - `visualize_attention_evolution_sparklines`
   - `visualize_attention_with_detected_regions`
   - `find_attention_regions_with_merging`
-- **Enhanced Visualization Capabilities**: Added support for comparing attention patterns, analyzing stability, and automatically detecting important regions.
+- **Enhanced Visualization Capabilities**: Added support for comparing attention patterns, analyzing stability, illustrating the evolution of attention patterns, and automatically detecting important regions.
 - **Improved Documentation**: The README and function descriptions have been updated to reflect the new capabilities.
 
 # Getting Help

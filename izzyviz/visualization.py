@@ -279,8 +279,8 @@ def visualize_attention_self_attention(
         attention_matrices = [
             attn[:question_end, :question_end],  # A->A
             attn[question_end:, question_end:],  # B->B
-            attn[question_end:, :question_end],  # B->A
             attn[:question_end, question_end:],  # A->B
+            attn[question_end:, :question_end],  # B->A
             attn                                 # All->All
         ]
 
@@ -295,8 +295,8 @@ def visualize_attention_self_attention(
         token_segment_pairs = [
             [tokens[:question_end], tokens[:question_end]],  # A->A
             [tokens[question_end:], tokens[question_end:]],  # B->B
-            [tokens[question_end:], tokens[:question_end]],  # B->A
-            [tokens[:question_end], tokens[question_end:]],  # A->B
+            [tokens[question_end:], tokens[:question_end]],  # A->B
+            [tokens[:question_end], tokens[question_end:]],  # B->A
             [tokens[:], tokens[:]]                           # All->All
         ]
 
@@ -1738,7 +1738,7 @@ def check_stability_heatmap_with_gradient_color(
     save_path="check_stability_heatmap_with_gradient_color.pdf",
     gamma=1.5,
     radial_resolution=100,   # Resolution of the radial gradient image
-    use_white_center=True,   # If True, use white at center instead of (mean-err) color
+    use_white_center=False,   # If True, use white at center instead of (mean-err) color
     color_contrast_scale=2.0, # Factor to enhance contrast between inner and outer colors
     max_circle_ratio=0.45    # Maximum circle radius as a fraction of half-cell width (was 0.5)
 ):
@@ -2415,7 +2415,7 @@ def visualize_attention_evolution_sparklines(
     sparkline_linewidth=1.0,
     sparkline_alpha=0.8,
     gamma=1.5,
-    normalize_sparklines=True,
+    normalize_sparklines=False,
     save_path="attention_evolution_sparklines.pdf"
 ):
     """
@@ -2535,15 +2535,17 @@ def visualize_attention_evolution_sparklines(
     # cell_height = 1.0
     # cell_width = 1.0
     
-    # Function to interpolate between two colors
     def get_sparkline_color(cell_intensity):
-        """Return either dark blue or white based on background intensity relative to color bar midpoint."""
-        # Calculate the middle of the color range (with PowerNorm influence)
-        norm_tmp = PowerNorm(gamma=1.5, vmin=min_val, vmax=max_val)
-        middle_value = norm_tmp.inverse(0.5)
-        
-        # Compare the raw attention value to the middle value
-        return sparkline_color_light if cell_intensity > middle_value else sparkline_color_dark
+        if not normalize_sparklines:
+            """Return either dark blue or white based on background intensity relative to color bar midpoint."""
+            # Calculate the middle of the color range (with PowerNorm influence)
+            norm_tmp = PowerNorm(gamma=1.5, vmin=min_val, vmax=max_val)
+            middle_value = norm_tmp.inverse(0.5)
+            
+            # Compare the raw attention value to the middle value
+            return sparkline_color_light if cell_intensity > middle_value else sparkline_color_dark
+        else:
+            return sparkline_color_dark
     
     # For global normalization (if not normalizing per cell), find global min/max
     if not normalize_sparklines:
@@ -2564,7 +2566,6 @@ def visualize_attention_evolution_sparklines(
             width = col_centers[1] - col_centers[0] if len(col_centers) > 1 else 1.0
             height = row_centers[1] - row_centers[0] if len(row_centers) > 1 else 1.0
             
-            # Normalize values as before
             if normalize_sparklines:
                 min_val, max_val = values.min(), values.max()
                 if max_val > min_val:  # Avoid division by zero
@@ -2719,7 +2720,7 @@ def visualize_attention_evolution_sparklines(
 from collections import deque
 
 def find_attention_regions_with_merging(attention_matrix, n_seeds=3, min_distance=2, 
-                                        expansion_threshold=0.8, merge_std_threshold=0.8,
+                                        expansion_threshold=0.7, merge_std_threshold=0.6,
                                         proximity_threshold=2, max_expansion_steps=3):
     """
     Find rectangular regions of high attention in an attention matrix with intelligent merging.
