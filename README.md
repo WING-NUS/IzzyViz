@@ -162,7 +162,7 @@ visualize_attention_self_attention(
 )
 ```
 
-**Output**: [QC_attention_heatmaps.pdf]()
+**Output**: [QC_attention_heatmaps.pdf](https://github.com/lxz333/IzzyViz/blob/main/images/QC_attention_heatmaps.pdf)
 
 ### Cross-Attention Visualization
 
