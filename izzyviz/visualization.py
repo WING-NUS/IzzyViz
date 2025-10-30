@@ -133,9 +133,9 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     for label in ax.get_yticklabels():
         label.set_rotation(0)
 
-    ax.set_title(title, fontsize=14)
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_title(title, fontsize=14,fontname='DejaVu Serif', fontweight='bold', pad=10)
+    ax.set_xlabel(xlabel, fontsize=12,fontname='FreeSerif', labelpad=15)
+    ax.set_ylabel(ylabel, fontsize=12,fontname='FreeSerif', labelpad=15)
 
     if top_cells is not None:
         # Highlight tick labels corresponding to top_cells
@@ -148,13 +148,13 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
         # Adjust x tick labels
         for idx, label in enumerate(x_ticklabels):
             if idx in x_indices and background_color:
-                label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+                label.set_bbox(dict(facecolor='#f8bbd0', edgecolor='#f8bbd0', boxstyle='round,pad=0.2', alpha=0.5))
 
         # Adjust y tick labels without inversion
         for row_index in y_indices:
             if row_index < len(y_ticklabels) and background_color:
                 label = y_ticklabels[row_index]
-                label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+                label.set_bbox(dict(facecolor='#f8bbd0', edgecolor='#f8bbd0', boxstyle='round,pad=0.2', alpha=0.5))
     
     # Draw red rectangles around the specified regions
     if left_top_cells is not None and right_bottom_cells is not None:
@@ -203,9 +203,10 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
                 (x, y),
                 width,
                 height,
-                linewidth=2,
-                edgecolor='red',
-                facecolor='none'
+                linewidth=3,
+                edgecolor='#CE93D8',
+                facecolor='none',
+                linestyle=':', 
             )
             ax.add_patch(rect)
 
@@ -714,7 +715,7 @@ def difference_heatmap(
 
     else:
         # For "none" base, set uniform white background with black borders
-        kwargs.setdefault("cmap", plt.cm.colors.ListedColormap(['white']))
+        kwargs.setdefault("cmap", plt.cm.colors.ListedColormap(["#fcfaf5"]))
         kwargs.setdefault("linecolor", 'black')  # Set border color to black
         kwargs.setdefault("linewidths", 0.7)
         kwargs.setdefault("cbar", False)
