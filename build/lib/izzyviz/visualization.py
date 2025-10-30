@@ -12,6 +12,9 @@ from matplotlib.patches import Wedge
 from matplotlib.lines import Line2D
 from matplotlib.collections import PatchCollection
 
+THEME_CMAP = 'Purples'
+THEME_POSITIVE = '#C77DF3'
+THEME_NEGATIVE = '#6A0DAD'
 
 # Define a function to make special tokens bold
 def bold_special_tokens(label):
@@ -20,7 +23,7 @@ def bold_special_tokens(label):
         return f'$\mathbf{{{label}}}$'  # Make it bold using LaTeX math formatting
     return label
 
-def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel, ylabel, ax, cmap='Blues',
+def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel, ylabel, ax, cmap=THEME_CMAP,
                              column_widths=None, row_heights=None, top_cells=None, vmin=None,
                              vmax=None, norm=None, gamma=1.5, left_top_cells=None, right_bottom_cells=None, linecolor='white', linewidths=1.0,
                              cbar=True, show_scores=True, background_color=True, lean_more=False):
@@ -130,9 +133,9 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
     for label in ax.get_yticklabels():
         label.set_rotation(0)
 
-    ax.set_title(title, fontsize=14)
-    ax.set_xlabel(xlabel, fontsize=12)
-    ax.set_ylabel(ylabel, fontsize=12)
+    ax.set_title(title, fontsize=14,fontname='DejaVu Serif', fontweight='bold', pad=10)
+    ax.set_xlabel(xlabel, fontsize=12,fontname='FreeSerif', labelpad=15)
+    ax.set_ylabel(ylabel, fontsize=12,fontname='FreeSerif', labelpad=15)
 
     if top_cells is not None:
         # Highlight tick labels corresponding to top_cells
@@ -145,13 +148,13 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
         # Adjust x tick labels
         for idx, label in enumerate(x_ticklabels):
             if idx in x_indices and background_color:
-                label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+                label.set_bbox(dict(facecolor='#f8bbd0', edgecolor='#f8bbd0', boxstyle='round,pad=0.2', alpha=0.5))
 
         # Adjust y tick labels without inversion
         for row_index in y_indices:
             if row_index < len(y_ticklabels) and background_color:
                 label = y_ticklabels[row_index]
-                label.set_bbox(dict(facecolor='yellowgreen', edgecolor='yellowgreen', boxstyle='round,pad=0.2', alpha=0.5))
+                label.set_bbox(dict(facecolor='#f8bbd0', edgecolor='#f8bbd0', boxstyle='round,pad=0.2', alpha=0.5))
     
     # Draw red rectangles around the specified regions
     if left_top_cells is not None and right_bottom_cells is not None:
@@ -200,9 +203,10 @@ def create_tablelens_heatmap(attention_matrix, x_labels, y_labels, title, xlabel
                 (x, y),
                 width,
                 height,
-                linewidth=2,
-                edgecolor='red',
-                facecolor='none'
+                linewidth=3,
+                edgecolor='#CE93D8',
+                facecolor='none',
+                linestyle=':', 
             )
             ax.add_patch(rect)
 
@@ -474,267 +478,6 @@ def visualize_attention_self_attention(
     else:
         raise ValueError("Invalid mode for encoder-only visualization. Choose from 'question_context' or 'self_attention'.")
 
-# def visualize_attention_decoder_only(attentions, source_tokens, generated_tokens, layer, head,
-#                                      top_n=3, enlarged_size=1.8, gamma=1.5,
-#                                      plot_titles=None, left_top_cells=None, right_bottom_cells=None,
-#                                      use_case='full_sequence', save_path=None):
-#     """
-#     Visualizes attention matrices for decoder-only models.
-
-#     Parameters:
-#     - attentions: List of attention matrices from the model.
-#     - source_tokens: List of source token labels.
-#     - generated_tokens: List of generated token labels.
-#     - layer: The layer number of the attention to visualize.
-#     - head: The head number of the attention to visualize.
-#     - top_n: The number of top attention scores to highlight.
-#     - enlarged_size: Factor by which to enlarge the top cells.
-#     - gamma: Gamma value for the power normalization of the colormap.
-#     - plot_titles: List of titles for the subplots. If None, default titles are used.
-#     - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
-#     - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-#     - use_case: The specific use case to visualize. Options are:
-#         - 'full_sequence': Input sequence attending to itself (no token generation).
-#         - 'self_attention_source': Self-Attention for Source Tokens (no causal masking).
-#         - 'generated_to_source': Generated-to-Source Attention (fully connected).
-#         - 'self_attention_generated': Self-Attention for Generated Tokens (causal-masked).
-#     """
-#     attn = attentions[layer].squeeze(0)[head]
-
-#     if use_case == 'full_sequence':
-#         # Input sequence attending to itself. The x, y labels are the same sentence.
-#         tokens = source_tokens
-#         attention_matrix = attn  # Shape: (seq_len, seq_len)
-#         x_labels = [bold_special_tokens(token) for token in tokens]
-#         y_labels = [bold_special_tokens(token) for token in tokens]
-#         title = plot_titles[0] if plot_titles else "Self-Attention Heatmap (Full Sequence)"
-
-#         # Prepare data
-#         data = attention_matrix.detach().cpu().numpy()
-#         global_vmin = data.min()
-#         global_vmax = data.max()
-#         norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
-
-#         # Find top attention cells
-#         top_cells = find_top_cells(data, top_n)
-
-#         # Initialize column widths and row heights
-#         num_rows, num_cols = data.shape
-#         default_width = 1
-#         default_height = 1
-#         column_widths = [default_width] * num_cols
-#         row_heights = [default_height] * num_rows
-
-#         # Enlarge top cells
-#         for (row_index, col_index) in top_cells:
-#             column_widths[col_index] = enlarged_size
-#             row_heights[row_index] = enlarged_size
-
-#         fig, ax = plt.subplots(figsize=(10, 10))
-#         ax, _ = create_tablelens_heatmap(
-#             attention_matrix,
-#             x_labels,
-#             y_labels,
-#             title,
-#             "Tokens Attended to",
-#             "Tokens Attending",
-#             ax,
-#             column_widths=column_widths,
-#             row_heights=row_heights,
-#             top_cells=top_cells,
-#             vmin=global_vmin,
-#             vmax=global_vmax,
-#             norm=norm,
-#             gamma=gamma,
-#             left_top_cells=left_top_cells,
-#             right_bottom_cells=right_bottom_cells
-#         )
-
-#         if save_path is None:
-#             save_path = "decoder_self_attention_heatmap.pdf"
-
-#         plt.tight_layout()
-#         plt.savefig(save_path)
-#         plt.close(fig)
-#         print("Decoder self-attention heatmap saved to ", save_path)
-
-#     elif use_case == 'self_attention_source':
-#         # Self-Attention for Source Tokens (no causal masking)
-#         tokens = source_tokens
-#         seq_len = len(source_tokens)
-#         attention_matrix = attn[:seq_len, :seq_len]
-#         x_labels = [bold_special_tokens(token) for token in tokens]
-#         y_labels = [bold_special_tokens(token) for token in tokens]
-#         title = plot_titles[0] if plot_titles else "Self-Attention Heatmap (Source Tokens)"
-
-#         # Prepare data
-#         data = attention_matrix.detach().cpu().numpy()
-#         global_vmin = data.min()
-#         global_vmax = data.max()
-#         norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
-
-#         # Find top attention cells
-#         top_cells = find_top_cells(data, top_n)
-
-#         # Initialize column widths and row heights
-#         num_rows, num_cols = data.shape
-#         default_width = 1
-#         default_height = 1
-#         column_widths = [default_width] * num_cols
-#         row_heights = [default_height] * num_rows
-
-#         # Enlarge top cells
-#         for (row_index, col_index) in top_cells:
-#             column_widths[col_index] = enlarged_size
-#             row_heights[row_index] = enlarged_size
-
-#         fig, ax = plt.subplots(figsize=(10, 10))
-#         ax, _ = create_tablelens_heatmap(
-#             attention_matrix,
-#             x_labels,
-#             y_labels,
-#             title,
-#             "Tokens Attended to",
-#             "Tokens Attending",
-#             ax,
-#             column_widths=column_widths,
-#             row_heights=row_heights,
-#             top_cells=top_cells,
-#             vmin=global_vmin,
-#             vmax=global_vmax,
-#             norm=norm,
-#             gamma=gamma,
-#             left_top_cells=left_top_cells,
-#             right_bottom_cells=right_bottom_cells
-#         )
-
-#         if save_path is None:
-#             save_path = "decoder_self_attention_source_tokens_heatmap.pdf"
-
-#         plt.tight_layout()
-#         plt.savefig(save_path)
-#         plt.close(fig)
-#         print("Decoder self-attention heatmap for source tokens saved to ", save_path)
-
-#     elif use_case == 'generated_to_source':
-#         # Generated-to-Source Attention (fully connected)
-#         source_seq_len = len(source_tokens)
-#         generated_seq_len = len(generated_tokens)
-#         attention_matrix = attn[source_seq_len:source_seq_len+generated_seq_len, :source_seq_len]
-#         x_labels = [bold_special_tokens(token) for token in source_tokens]
-#         y_labels = [bold_special_tokens(token) for token in generated_tokens]
-#         title = plot_titles[0] if plot_titles else "Generated Tokens attending to Source Tokens"
-
-#         # Prepare data
-#         data = attention_matrix.detach().cpu().numpy()
-#         global_vmin = data.min()
-#         global_vmax = data.max()
-#         norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
-
-#         # Find top attention cells
-#         top_cells = find_top_cells(data, top_n)
-
-#         # Initialize column widths and row heights
-#         num_rows, num_cols = data.shape
-#         default_width = 1
-#         default_height = 1
-#         column_widths = [default_width] * num_cols
-#         row_heights = [default_height] * num_rows
-
-#         # Enlarge top cells
-#         for (row_index, col_index) in top_cells:
-#             column_widths[col_index] = enlarged_size
-#             row_heights[row_index] = enlarged_size
-
-#         fig, ax = plt.subplots(figsize=(10, 10))
-#         ax, _ = create_tablelens_heatmap(
-#             attention_matrix,
-#             x_labels,
-#             y_labels,
-#             title,
-#             "Source Tokens",
-#             "Generated Tokens",
-#             ax,
-#             column_widths=column_widths,
-#             row_heights=row_heights,
-#             top_cells=top_cells,
-#             vmin=global_vmin,
-#             vmax=global_vmax,
-#             norm=norm,
-#             gamma=gamma,
-#             left_top_cells=left_top_cells,
-#             right_bottom_cells=right_bottom_cells
-#         )
-
-#         if save_path is None:
-#             save_path = "decoder_generated_to_source_attention_heatmap.pdf"
-
-#         plt.tight_layout()
-#         plt.savefig(save_path)
-#         plt.close(fig)
-#         print("Decoder generated-to-source attention heatmap saved to ", save_path)
-
-#     elif use_case == 'self_attention_generated':
-#         # Self-Attention for Generated Tokens (causal-masked)
-#         source_seq_len = len(source_tokens)
-#         generated_seq_len = len(generated_tokens)
-#         total_seq_len = source_seq_len + generated_seq_len
-#         attention_matrix = attn[source_seq_len:total_seq_len, source_seq_len:total_seq_len]
-#         x_labels = [bold_special_tokens(token) for token in generated_tokens]
-#         y_labels = [bold_special_tokens(token) for token in generated_tokens]
-#         title = plot_titles[0] if plot_titles else "Self-Attention Heatmap (Generated Tokens)"
-
-#         # Prepare data
-#         data = attention_matrix.detach().cpu().numpy()
-#         global_vmin = data.min()
-#         global_vmax = data.max()
-#         norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
-
-#         # Find top attention cells
-#         top_cells = find_top_cells(data, top_n)
-
-#         # Initialize column widths and row heights
-#         num_rows, num_cols = data.shape
-#         default_width = 1
-#         default_height = 1
-#         column_widths = [default_width] * num_cols
-#         row_heights = [default_height] * num_rows
-
-#         # Enlarge top cells
-#         for (row_index, col_index) in top_cells:
-#             column_widths[col_index] = enlarged_size
-#             row_heights[row_index] = enlarged_size
-
-#         fig, ax = plt.subplots(figsize=(10, 10))
-#         ax, _ = create_tablelens_heatmap(
-#             attention_matrix,
-#             x_labels,
-#             y_labels,
-#             title,
-#             "Tokens Attended to",
-#             "Tokens Attending",
-#             ax,
-#             column_widths=column_widths,
-#             row_heights=row_heights,
-#             top_cells=top_cells,
-#             vmin=global_vmin,
-#             vmax=global_vmax,
-#             norm=norm,
-#             gamma=gamma,
-#             left_top_cells=left_top_cells,
-#             right_bottom_cells=right_bottom_cells
-#         )
-
-#         if save_path is None:
-#             save_path = "decoder_self_attention_generated_tokens_heatmap.pdf"
-
-#         plt.tight_layout()
-#         plt.savefig(save_path)
-#         plt.close(fig)
-#         print("Decoder self-attention heatmap for generated tokens saved to ", save_path)
-
-#     else:
-#         raise ValueError("Invalid use_case for decoder-only visualization. Choose from 'full_sequence', 'self_attention_source', 'generated_to_source', or 'self_attention_generated'.")
 
 def visualize_attention_encoder_decoder(attention_matrix, encoder_tokens, decoder_tokens,
                                         xlabel=None, ylabel=None,
@@ -912,8 +655,8 @@ def difference_heatmap(
     data2,
     base="data1",  # "data1", "data2", or "none" to choose the background
     circle_scale=1.0,
-    circle_color_positive="blue",
-    circle_color_negative="red",
+    circle_color_positive=THEME_POSITIVE,
+    circle_color_negative=THEME_NEGATIVE,
     ax=None,
     gamma=1.5,
     **kwargs
@@ -966,13 +709,13 @@ def difference_heatmap(
         vmax = bg_data.max()
         norm = PowerNorm(gamma=gamma, vmin=vmin, vmax=vmax)
         kwargs.setdefault('norm', norm)
-        kwargs.setdefault('cmap', 'Blues')  # default colormap
+        kwargs.setdefault('cmap', THEME_CMAP)  # default colormap
         kwargs.setdefault('vmin', vmin)
         kwargs.setdefault('vmax', vmax)
 
     else:
         # For "none" base, set uniform white background with black borders
-        kwargs.setdefault("cmap", plt.cm.colors.ListedColormap(['white']))
+        kwargs.setdefault("cmap", plt.cm.colors.ListedColormap(["#fcfaf5"]))
         kwargs.setdefault("linecolor", 'black')  # Set border color to black
         kwargs.setdefault("linewidths", 0.7)
         kwargs.setdefault("cbar", False)
@@ -1048,7 +791,7 @@ def compare_two_attentions(attn1, attn2, tokens, title="Comparison: Matrix2 - Ma
     - tokens: List of token labels for x/y axes
     - save_path: File path to save the generated heatmap PDF
     - title: Title for the plot (default: "Comparison: Matrix2 - Matrix1")
-    - cmap: Matplotlib colormap for the heatmap (default: 'Blues')
+    - cmap: Matplotlib colormap for the heatmap (default: 'Purples')
     """
     fig, ax = plt.subplots(figsize=(10, 10))
 
@@ -1069,8 +812,8 @@ def compare_two_attentions(attn1, attn2, tokens, title="Comparison: Matrix2 - Ma
         xlabel="Tokens Attended to",
         ylabel="Tokens Attending",
         circle_scale=1.0,            # adjust for bigger or smaller circles
-        circle_color_positive="orange", # where attn2 > attn1
-        circle_color_negative="blue", # where attn2 < attn1
+        circle_color_positive=THEME_POSITIVE, # where attn2 > attn1
+        circle_color_negative=THEME_NEGATIVE, # where attn2 < attn1
         ax=ax
     )
 
@@ -1101,7 +844,7 @@ def check_stability_heatmap(
     ax=None,
     use_std_error=False,      # If True, use SEM = std/sqrt(n); else use raw std
     circle_scale=1.0,         # Base scaling factor for circles
-    cmap="Blues",            # Colormap for circle colors
+    cmap=THEME_CMAP,            # Colormap for circle colors
     linecolor="black",        # Grid line color
     linewidths=0.5,          # Grid line width
     save_path="check_stability_heatmap.pdf",
@@ -1135,7 +878,7 @@ def check_stability_heatmap(
     circle_scale : float
         Overall scale for circle sizes. Increase if circles are too small, or decrease if too large.
     cmap : str or matplotlib.colors.Colormap
-        Colormap used to color circles by the mean value. Defaults to 'Blues'.
+        Colormap used to color circles by the mean value. Defaults to 'Purples'.
     linecolor : str
         Color of grid lines in the underlying table-lens heatmap.
     linewidths : float
@@ -1281,7 +1024,7 @@ def check_stability_heatmap(
 
 def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison with Circles", 
                                         xlabel=None, ylabel=None, save_path=None, 
-                                        circle_scale=1.0, gamma=1.5, cmap="Blues", max_circle_ratio=0.45):
+                                        circle_scale=1.0, gamma=1.5, cmap=THEME_CMAP, max_circle_ratio=0.45):
     """
     Compares two attention matrices by showing the first matrix as background colors
     and the second matrix as circles with varying sizes based on their differences.
@@ -1296,7 +1039,7 @@ def compare_two_attentions_with_circles(attn1, attn2, tokens, title="Comparison 
     - save_path: File path to save the generated heatmap PDF
     - circle_scale: Scale factor for circle sizes (default: 1.0)
     - gamma: Gamma value for the power normalization of the colormap (default: 1.5)
-    - cmap: Colormap to use (default: 'Blues')
+    - cmap: Colormap to use (default: 'Purples')
     - max_circle_ratio : float, default=0.45
         Maximum radius of a circle as a fraction of half-cell width. Values < 0.5
         ensure circles don't completely fill the cell.
@@ -1388,7 +1131,7 @@ def check_stability_heatmap_new(
     ax=None,
     use_std_error=False,   # If True, use SEM = std/sqrt(n); else use raw std
     circle_scale=1.0,      # Base scaling factor for circles
-    cmap="Blues",          # Colormap for *square cells* (based on the mean)
+    cmap=THEME_CMAP,          # Colormap for *square cells* (based on the mean)
     linecolor="white",     # Grid line color
     linewidths=1.0,        # Grid line width
     save_path="check_stability_heatmap.pdf",
@@ -1424,7 +1167,7 @@ def check_stability_heatmap_new(
     circle_scale : float
         A factor controlling the size of the circles. Increase if circles are too small.
     cmap : str or Colormap
-        The colormap for the *background squares*. Default is 'Blues'.
+        The colormap for the *background squares*. Default is 'Purples'.
     linecolor : str
         Color of grid lines in the underlying table-lens heatmap.
     linewidths : float
@@ -1551,7 +1294,7 @@ def target_ring_heatmap(
     xlabel="Tokens Attended to",
     ylabel="Tokens Attending",
     ax=None,
-    cmap="Blues",            # Colormap for background and rings
+    cmap=THEME_CMAP,            # Colormap for background and rings
     gamma=1.5,               # PowerNorm gamma
     linecolor="white",       # Grid line color
     linewidths=1.0,          # Grid line width
@@ -1595,7 +1338,7 @@ def target_ring_heatmap(
     ax : matplotlib.axes.Axes, optional
         Axes to plot on. If None, a new figure and axes are created.
     cmap : str or matplotlib.colors.Colormap
-        Colormap for squares and rings. Defaults to 'Blues'.
+        Colormap for squares and rings. Defaults to 'Purples'.
     gamma : float
         Gamma value for the PowerNorm color scaling.
     linecolor : str
@@ -1732,7 +1475,7 @@ def check_stability_heatmap_with_gradient_color(
     ax=None,
     use_std_error=True,   # If True, use SEM = std/sqrt(n); else raw std
     circle_scale=1.0,      # Factor controlling how large the circle can get
-    cmap="Blues",          # Colormap for background squares
+    cmap=THEME_CMAP,          # Colormap for background squares
     linecolor="white",     # Grid line color
     linewidths=1.0,        # Grid line width
     save_path="check_stability_heatmap_with_gradient_color.pdf",
@@ -1746,7 +1489,7 @@ def check_stability_heatmap_with_gradient_color(
     Plots an n-run stability heatmap:
 
       1) Background squares are colored by the mean attention score across n matrices
-         (darker = higher mean, using 'Blues').
+         (darker = higher mean, using 'Purples').
       2) Each cell has a circle whose radius is proportional to the "confidence interval"
          (e.g. std or SEM). A bigger interval => a bigger circle.
       3) The circle is filled with a *radial gradient*:
@@ -1780,7 +1523,7 @@ def check_stability_heatmap_with_gradient_color(
     circle_scale : float
         A factor controlling the size of circles. Increase if circles are too small.
     cmap : str or matplotlib.colors.Colormap
-        Colormap for both squares & gradient circles. Default is 'Blues'.
+        Colormap for both squares & gradient circles. Default is 'Purples'.
     linecolor : str
         Color of grid lines in the table-lens heatmap.
     linewidths : float
@@ -1986,7 +1729,7 @@ def half_pie_heatmap_original(
     xlabel="Tokens Attended to",
     ylabel="Tokens Attending",
     ax=None,
-    cmap="Blues",            
+    cmap=THEME_CMAP,            
     gamma=1.5,               
     linecolor="white",       
     linewidths=1.0,          
@@ -2203,7 +1946,7 @@ def half_pie_heatmap(
     xlabel="Tokens Attended to",
     ylabel="Tokens Attending",
     ax=None,
-    cmap="Blues",
+    cmap=THEME_CMAP,
     gamma=1.5,
     linecolor="white",
     linewidths=1.0,
@@ -2240,7 +1983,7 @@ def half_pie_heatmap(
     ax : matplotlib.axes.Axes, optional
         Axes to plot on. If None, a new figure + axes is created.
     cmap : str or matplotlib.colors.Colormap
-        Colormap for squares + half-pies. Defaults to 'Blues'.
+        Colormap for squares + half-pies. Defaults to 'Purples'.
     gamma : float
         Gamma value for the PowerNorm color scaling.
     linecolor : str
@@ -2589,111 +2332,6 @@ def visualize_attention_evolution_sparklines(
             sparkline_color = get_sparkline_color(cell_intensity)
             ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
 
-    
-    # for i in range(n_tokens):
-    #     for j in range(n_tokens):
-    #         # Get time series for this cell
-    #         values = attention_stack[:, i, j]
-            
-    #         # Normalize based on user preference
-    #         if normalize_sparklines:
-    #             # Per-cell normalization (original behavior)
-    #             min_val, max_val = values.min(), values.max()
-    #             if max_val > min_val:  # Avoid division by zero
-    #                 norm_values = (values - min_val) / (max_val - min_val)
-    #             else:
-    #                 norm_values = np.ones_like(values) * 0.5
-    #         else:
-    #             # Global normalization (all cells share same y-axis scale)
-    #             if global_max > global_min:  # Avoid division by zero
-    #                 norm_values = (values - global_min) / (global_max - global_min)
-    #             else:
-    #                 norm_values = np.ones_like(values) * 0.5
-            
-    #         # Create x-coordinates for the time steps
-    #         x = np.linspace(j - cell_width/2 + 0.1, j + cell_width/2 - 0.1, n_epochs)
-            
-    #         # Calculate y-coordinates: invert normalized values to plot within cell
-    #         y = i + (1 - norm_values) * cell_height * 0.8 - cell_height * 0.4
-            
-    #         # Determine color based on background intensity
-    #         cell_intensity = avg_attention[i, j]
-    #         sparkline_color = get_sparkline_color(cell_intensity)
-            
-    #         # Plot the sparkline
-    #         ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
-
-    # # Now use actual cell positions for sparklines
-    # for i in range(n_tokens):
-    #     for j in range(n_tokens):
-    #         # Get time series for this cell
-    #         values = attention_stack[:, i, j]
-            
-    #         # Get actual cell position and dimensions
-    #         x_center, y_center, width, height = cell_positions[i][j]
-            
-    #         # Normalize values as before
-    #         if normalize_sparklines:
-    #             # Per-cell normalization
-    #             min_val, max_val = values.min(), values.max()
-    #             if max_val > min_val:  # Avoid division by zero
-    #                 norm_values = (values - min_val) / (max_val - min_val)
-    #             else:
-    #                 norm_values = np.ones_like(values) * 0.5
-    #         else:
-    #             # Global normalization
-    #             if global_max > global_min:
-    #                 norm_values = (values - global_min) / (global_max - global_min)
-    #             else:
-    #                 norm_values = np.ones_like(values) * 0.5
-            
-    #         # Create x-coordinates centered in the actual cell
-    #         x = np.linspace(x_center - width*0.4, x_center + width*0.4, n_epochs)
-            
-    #         # Calculate y-coordinates using actual cell dimensions
-    #         y = y_center - (norm_values - 0.5) * height * 0.7
-            
-    #         # Determine color and plot sparkline
-    #         cell_intensity = avg_attention[i, j]
-    #         sparkline_color = get_sparkline_color(cell_intensity)
-    #         ax.plot(x, y, color=sparkline_color, linewidth=sparkline_linewidth, alpha=sparkline_alpha)
-    
-    # # Set token labels if provided
-    # if tokens is not None:
-    #     if len(tokens) != n_tokens:
-    #         print(f"Warning: tokens list length ({len(tokens)}) doesn't match matrix dimensions ({n_tokens})")
-    #         # Truncate or pad tokens list as needed
-    #         tokens = tokens[:n_tokens] if len(tokens) > n_tokens else tokens + [""] * (n_tokens - len(tokens))
-        
-    #     # Create formatted labels (escape special chars, etc.)
-    #     formatted_tokens = []
-    #     for token in tokens:
-    #         if token.startswith("<") and token.endswith(">"):
-    #             token = r"$\bf{" + token + "}$"  # Make special tokens bold
-    #         formatted_tokens.append(token)
-        
-        # Set labels
-        # ax.set_xticks(np.arange(n_tokens))
-        # ax.set_yticks(np.arange(n_tokens))
-        # ax.set_xticklabels(formatted_tokens)
-        # ax.set_yticklabels(formatted_tokens)
-    
-    # Set title and labels
-    # ax.set_title(title, fontsize=title_fontsize)
-    # ax.set_xlabel(xlabel)
-    # ax.set_ylabel(ylabel)
-    # ax.xaxis.set_label_position('top')
-    # ax.xaxis.tick_top()
-
-    # for label in ax.get_xticklabels():
-    #     label.set_rotation(45)
-    
-    # Add colorbar for the background
-    # divider = make_axes_locatable(ax)
-    # cax = divider.append_axes("right", size="5%", pad=0.05)
-    # cbar = plt.colorbar(im, cax=cax)
-    # cbar.outline.set_visible(False)
-    # cbar.set_label("Average Attention")
     
     # Update legend - show both dark and light sparkline colors
     legend_elements = [
@@ -3070,7 +2708,7 @@ def visualize_attention_with_detected_regions(
     gamma=1.5,
     save_path="attention_with_detected_regions.pdf",
     ax=None,
-    cmap="Blues",
+    cmap=THEME_CMAP,
     max_expansion_steps=3,
     proximity_threshold=2
 ):
