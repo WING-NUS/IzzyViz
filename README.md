@@ -538,6 +538,10 @@ Contributions are welcome! If you have ideas for improvements or encounter any i
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=zoeyada/IzzyViz&type=Date)](https://star-history.com/#zoeyada/IzzyViz&Date)
+
 ---
 
 # Changelog
