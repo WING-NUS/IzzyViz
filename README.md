@@ -540,7 +540,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lxz333/IzzyViz&type=Date)](https://star-history.com/#lxz333/IzzyViz&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=WING-NUS/IzzyViz&type=Date)](https://star-history.com/#WING-NUS/IzzyViz&Date)
 
 ---
 
