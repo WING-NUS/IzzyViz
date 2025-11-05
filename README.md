@@ -1,6 +1,6 @@
-# 🔮 IzzyViz
+# 🔮 IzzyViz: See How Transformers Think
 
-
+![intro.jpg](images/intro.jpg)
 
 **IzzyViz** is a Python library designed to visualize attention scores in [transformer](https://jalammar.github.io/illustrated-transformer/) models. It provides flexible visualization functions that can handle various attention scenarios and model architectures. Additionally, it offers three attention heatmap variants that enable comparisons between two attention matrices, visualize model stability, and track the evolution of attention patterns over training time steps. Lastly, it includes an automatic key region highlighting function to assist users in identifying important attention areas. The output of all functions is provided in a **static** PDF format, making it suitable for direct use in research writing.
 
@@ -542,7 +542,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 # Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=WING-NUS/IzzyViz&type=date&legend=top-left)](https://www.star-history.com/#WING-NUS/IzzyViz&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=wing-nus/IzzyViz&type=date&legend=top-left)](https://www.star-history.com/#wing-nus/IzzyViz&type=date&legend=top-left)
 
 # Changelog
 
