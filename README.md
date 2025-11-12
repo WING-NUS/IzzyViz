@@ -1,3 +1,4 @@
+![intro.jpg](images/banner.png)
 # 🔮 IzzyViz: See How Transformers Think
 
 ![intro.jpg](images/intro.jpg)
