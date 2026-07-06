@@ -759,6 +759,7 @@ def visualize_attention_overview(
     shared_vmin = None
     shared_vmax = None
     shared_norm = None
+    show_shared_cbar = shared_color_scale and shared_cbar
 
     if shared_color_scale:
         shared_vmin = attention_array.min()
@@ -829,21 +830,83 @@ def visualize_attention_overview(
                 labeltop=False,
             )
 
-            if layer_index == 0:
-                ax.set_title(f"Head {head_index}", fontsize=10, pad=8)
-            if head_index == 0:
-                ax.set_ylabel(f"Layer {layer_index}", fontsize=10, labelpad=18)
+    fig_width, fig_height = fig.get_size_inches()
+    left_margin = max(0.02, min(0.08, 0.7 / fig_width))
+    bottom_margin = max(0.02, min(0.06, 0.35 / fig_height))
+    top_reserved = 0.75 if title else 0.35
+    right_reserved = 0.9 if show_shared_cbar else 0.15
+    top_margin = max(0.65, 1 - top_reserved / fig_height)
+    right_margin = max(0.75, 1 - right_reserved / fig_width)
+    fig.tight_layout(rect=[left_margin, bottom_margin, right_margin, top_margin])
+
+    fig.canvas.draw()
+    heatmap_positions = [ax.get_position() for ax in axes.ravel()]
+    grid_left = min(pos.x0 for pos in heatmap_positions)
+    grid_right = max(pos.x1 for pos in heatmap_positions)
+    grid_bottom = min(pos.y0 for pos in heatmap_positions)
+    grid_top = max(pos.y1 for pos in heatmap_positions)
+
+    title_fontsize = max(16, min(24, fig_width * 0.7))
+    axis_label_fontsize = max(9, min(12, fig_width / max(num_heads, 1) * 4.5))
+    label_gap_y = max(0.006, 0.12 / fig_height)
+    title_y = 0.99
+    title_height = title_fontsize / 72 / fig_height
+    max_head_label_y = title_y - title_height - max(0.004, 0.08 / fig_height)
+    head_label_y = min(grid_top + label_gap_y, max_head_label_y)
+
+    for head_index in range(num_heads):
+        col_positions = [
+            axes[layer_index, head_index].get_position()
+            for layer_index in range(num_layers)
+        ]
+        col_left = min(pos.x0 for pos in col_positions)
+        col_right = max(pos.x1 for pos in col_positions)
+        fig.text(
+            (col_left + col_right) / 2,
+            head_label_y,
+            f"Head {head_index}",
+            ha="center",
+            va="bottom",
+            fontsize=axis_label_fontsize,
+        )
+
+    layer_label_x = max(0.005, grid_left - max(0.01, 0.28 / fig_width))
+    for layer_index in range(num_layers):
+        row_positions = [
+            axes[layer_index, head_index].get_position()
+            for head_index in range(num_heads)
+        ]
+        row_bottom = min(pos.y0 for pos in row_positions)
+        row_top = max(pos.y1 for pos in row_positions)
+        fig.text(
+            layer_label_x,
+            (row_bottom + row_top) / 2,
+            f"Layer {layer_index}",
+            ha="center",
+            va="center",
+            rotation=90,
+            fontsize=axis_label_fontsize,
+        )
 
     if title:
-        fig.suptitle(title, fontsize=14, fontname="DejaVu Serif", fontweight="bold")
-
-    show_shared_cbar = shared_color_scale and shared_cbar
-    top_margin = 0.94 if title else 0.98
-    right_margin = 0.9 if show_shared_cbar else 1
-    fig.tight_layout(rect=[0, 0, right_margin, top_margin])
+        fig.text(
+            0.5,
+            title_y,
+            title,
+            ha="center",
+            va="top",
+            fontsize=title_fontsize,
+            fontname="DejaVu Serif",
+            fontweight="bold",
+        )
 
     if show_shared_cbar:
-        cax = fig.add_axes([0.92, 0.12, 0.018, 0.76])
+        cbar_pad = max(0.008, 0.14 / fig_width)
+        cbar_width = max(0.01, min(0.02, 0.18 / fig_width))
+        cbar_left = min(0.985 - cbar_width, grid_right + cbar_pad)
+        cax = fig.add_axes(
+            [cbar_left, grid_bottom, cbar_width, grid_top - grid_bottom]
+        )
         cmap_obj = plt.get_cmap(cmap) if isinstance(cmap, str) else cmap
         sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=shared_norm)
         sm.set_array([])
