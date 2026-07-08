@@ -108,6 +108,38 @@ class VisualizationTests(unittest.TestCase):
                 ["a"],
             )
 
+    def test_public_functions_expose_x_label_rotation(self):
+        matrix = self.rng.random((4, 4))
+        stability = self.rng.random((3, 4, 4))
+        attention_time = self.rng.random((3, 2, 2, 4, 4))
+
+        compare_ax = compare_two_attentions_with_circles(
+            matrix,
+            matrix,
+            self.labels,
+            rotate_x_labels_90=True,
+        )
+        self.assertEqual(compare_ax.get_xticklabels()[0].get_rotation(), 90)
+        plt.close(compare_ax.figure)
+
+        stability_ax = check_stability_heatmap_with_gradient_color(
+            stability,
+            x_labels=self.labels,
+            y_labels=self.labels,
+            rotate_x_labels_90=False,
+        )
+        self.assertEqual(stability_ax.get_xticklabels()[0].get_rotation(), 45)
+        plt.close(stability_ax.figure)
+
+        sparkline_ax = visualize_attention_evolution_sparklines(
+            attention_time,
+            tokens=self.labels,
+            layer=1,
+            head=0,
+            rotate_x_labels_90=True,
+        )
+        self.assertEqual(sparkline_ax.get_xticklabels()[0].get_rotation(), 90)
+
     def test_stability_validates_labels_and_radial_resolution(self):
         matrices = self.rng.random((3, 4, 4))
 

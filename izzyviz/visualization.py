@@ -1020,6 +1020,8 @@ def compare_two_attentions_with_circles(
     gamma: float = 1.5,
     cmap: Any = THEME_CMAP,
     max_circle_ratio: float = 0.45,
+    rotate_x_labels_90: bool = False,
+    lean_more: Optional[bool] = None,
 ) -> Axes:
     """
     Compares two attention matrices by showing the first matrix as background colors
@@ -1031,7 +1033,13 @@ def compare_two_attentions_with_circles(
         Optional output path. If None, the figure is not saved.
     max_circle_ratio
         Maximum radius of a circle as a fraction of half-cell width.
+    rotate_x_labels_90
+        If True, rotate x-axis labels by 90 degrees instead of 45 degrees.
     """
+    rotate_x_labels_90 = _resolve_deprecated_bool_alias(
+        rotate_x_labels_90, lean_more, "rotate_x_labels_90", "lean_more"
+    )
+
     fig, ax = plt.subplots(figsize=(10, 10))
 
     data1 = _attention_to_numpy(attn1)
@@ -1074,6 +1082,7 @@ def compare_two_attentions_with_circles(
         norm=norm,
         vmax=vmax,
         vmin=vmin,
+        rotate_x_labels_90=rotate_x_labels_90,
     )
 
     row_centers = plotter.row_centers
@@ -1126,6 +1135,8 @@ def check_stability_heatmap_with_gradient_color(
     use_white_center: bool = False,
     color_contrast_scale: float = 2.0,
     max_circle_ratio: float = 0.45,
+    rotate_x_labels_90: bool = True,
+    lean_more: Optional[bool] = None,
 ) -> Axes:
     """
     Plots an n-run stability heatmap:
@@ -1152,6 +1163,8 @@ def check_stability_heatmap_with_gradient_color(
         If True, use SEM; otherwise use raw standard deviation.
     save_path
         Optional output path. If None, the figure is not saved.
+    rotate_x_labels_90
+        If True, rotate x-axis labels by 90 degrees instead of 45 degrees.
 
     Returns
     -------
@@ -1159,6 +1172,10 @@ def check_stability_heatmap_with_gradient_color(
         The axes with the plot.
 
     """
+    rotate_x_labels_90 = _resolve_deprecated_bool_alias(
+        rotate_x_labels_90, lean_more, "rotate_x_labels_90", "lean_more"
+    )
+
     if radial_resolution < 2:
         raise ValueError("radial_resolution must be >= 2")
 
@@ -1220,7 +1237,7 @@ def check_stability_heatmap_with_gradient_color(
         vmin=vmin,
         vmax=vmax,
         norm=norm,
-        rotate_x_labels_90=True,
+        rotate_x_labels_90=rotate_x_labels_90,
     )
 
     row_centers = plotter.row_centers
@@ -1322,6 +1339,8 @@ def visualize_attention_evolution_sparklines(
     gamma: float = 1.5,
     normalize_sparklines: bool = False,
     save_path: Optional[str] = None,
+    rotate_x_labels_90: bool = False,
+    lean_more: Optional[bool] = None,
 ) -> Axes:
     """
     Visualize the evolution of attention matrices over training epochs with sparklines.
@@ -1341,12 +1360,18 @@ def visualize_attention_evolution_sparklines(
         uses ``sparkline_color_fixed``.
     save_path
         Optional output path. If None, the figure is not saved.
+    rotate_x_labels_90
+        If True, rotate x-axis labels by 90 degrees instead of 45 degrees.
 
     Returns
     -------
     matplotlib.axes.Axes
         The axes containing the visualization.
     """
+    rotate_x_labels_90 = _resolve_deprecated_bool_alias(
+        rotate_x_labels_90, lean_more, "rotate_x_labels_90", "lean_more"
+    )
+
     if tokens is None:
         raise ValueError("tokens is required for sparkline axis labels.")
 
@@ -1426,6 +1451,7 @@ def visualize_attention_evolution_sparklines(
         vmin=min_val,
         vmax=max_val,
         norm=norm,
+        rotate_x_labels_90=rotate_x_labels_90,
     )
 
     row_centers = plotter.row_centers
