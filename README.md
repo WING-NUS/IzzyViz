@@ -65,7 +65,7 @@
 You can install **IzzyViz** via `pip`:
 
 ```bash
-git clone https://github.com/lxz333/IzzyViz.git
+git clone https://github.com/zoeyada/IzzyViz.git
 cd IzzyViz
 pip install .
 ```
@@ -173,7 +173,7 @@ visualize_attention_self_attention(
 )
 ```
 
-**Output**: [QC_attention_heatmaps.pdf](https://github.com/lxz333/IzzyViz/blob/main/images/QC_attention_heatmaps.pdf)
+**Output**: [QC_attention_heatmaps.pdf](https://github.com/zoeyada/IzzyViz/blob/main/images/QC_attention_heatmaps.pdf)
 
 ### Cross-Attention Visualization
 
@@ -539,7 +539,7 @@ Identifies important regions in an attention matrix by finding high-attention se
 
 ## Contributing
 
-Contributions are welcome! If you have ideas for improvements or encounter any issues, please open an issue or submit a pull request on [GitHub](https://github.com/lxz333/IzzyViz).
+Contributions are welcome! If you have ideas for improvements or encounter any issues, please open an issue or submit a pull request on [GitHub](https://github.com/zoeyada/IzzyViz).
 
 ## License
 

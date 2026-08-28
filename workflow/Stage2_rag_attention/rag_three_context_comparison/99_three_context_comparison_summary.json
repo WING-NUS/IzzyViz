@@ -1,0 +1,470 @@
+[
+  {
+    "ctx_id": "ctx_ac_001",
+    "relatedness": "high",
+    "length": 96,
+    "sequence_length": 342,
+    "x_end": 334,
+    "answer_start": 336,
+    "answer_end": 342,
+    "metric_top3_by_metric": {
+      "entropy": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 3,
+          "score": 0.8721988806083367
+        },
+        {
+          "rank": 2,
+          "layer": 0,
+          "head": 10,
+          "score": 0.8178516541363821
+        },
+        {
+          "rank": 3,
+          "layer": 15,
+          "head": 7,
+          "score": 0.7699771192214184
+        }
+      ],
+      "variance": [
+        {
+          "rank": 1,
+          "layer": 19,
+          "head": 5,
+          "score": 0.001767621492035687
+        },
+        {
+          "rank": 2,
+          "layer": 14,
+          "head": 3,
+          "score": 0.0016758510610088706
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.0016461332561448216
+        }
+      ],
+      "threshold_based_concentration": [
+        {
+          "rank": 1,
+          "layer": 8,
+          "head": 3,
+          "score": 0.9888704419136047
+        },
+        {
+          "rank": 2,
+          "layer": 14,
+          "head": 3,
+          "score": 0.9814317226409912
+        },
+        {
+          "rank": 3,
+          "layer": 0,
+          "head": 10,
+          "score": 0.9654747843742371
+        }
+      ],
+      "top_percent_concentration": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 3,
+          "score": 0.9999999744655185
+        },
+        {
+          "rank": 2,
+          "layer": 0,
+          "head": 10,
+          "score": 0.9999976984665117
+        },
+        {
+          "rank": 3,
+          "layer": 14,
+          "head": 3,
+          "score": 0.9998735344488558
+        }
+      ],
+      "local_dependency": [
+        {
+          "rank": 1,
+          "layer": 11,
+          "head": 4,
+          "score": 0.5406203356874307
+        },
+        {
+          "rank": 2,
+          "layer": 1,
+          "head": 1,
+          "score": 0.47714948403773694
+        },
+        {
+          "rank": 3,
+          "layer": 18,
+          "head": 4,
+          "score": 0.45680111605262197
+        }
+      ],
+      "long_range_dependency": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 10,
+          "score": 0.9999908238130792
+        },
+        {
+          "rank": 2,
+          "layer": 8,
+          "head": 3,
+          "score": 0.9995876678752407
+        },
+        {
+          "rank": 3,
+          "layer": 14,
+          "head": 3,
+          "score": 0.9992120179599455
+        }
+      ]
+    },
+    "cluster_representatives": [
+      {
+        "ctx_id": "ctx_ac_001",
+        "cluster": 0,
+        "layer": 22,
+        "head": 7,
+        "cluster_size": 31
+      },
+      {
+        "ctx_id": "ctx_ac_001",
+        "cluster": 1,
+        "layer": 11,
+        "head": 1,
+        "cluster_size": 23
+      },
+      {
+        "ctx_id": "ctx_ac_001",
+        "cluster": 2,
+        "layer": 9,
+        "head": 0,
+        "cluster_size": 282
+      }
+    ],
+    "inspect_layer": 22,
+    "inspect_head": 7
+  },
+  {
+    "ctx_id": "ctx_0039",
+    "relatedness": "medium",
+    "length": 1801,
+    "sequence_length": 2110,
+    "x_end": 2102,
+    "answer_start": 2104,
+    "answer_end": 2110,
+    "metric_top3_by_metric": {
+      "entropy": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 3,
+          "score": 0.8818530242059777
+        },
+        {
+          "rank": 2,
+          "layer": 8,
+          "head": 3,
+          "score": 0.8016840170758258
+        },
+        {
+          "rank": 3,
+          "layer": 14,
+          "head": 3,
+          "score": 0.7921771942934397
+        }
+      ],
+      "variance": [
+        {
+          "rank": 1,
+          "layer": 8,
+          "head": 3,
+          "score": 0.0004489926795940846
+        },
+        {
+          "rank": 2,
+          "layer": 14,
+          "head": 3,
+          "score": 0.00043561912025325
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.0004262728907633573
+        }
+      ],
+      "threshold_based_concentration": [
+        {
+          "rank": 1,
+          "layer": 8,
+          "head": 3,
+          "score": 0.9873606562614441
+        },
+        {
+          "rank": 2,
+          "layer": 14,
+          "head": 3,
+          "score": 0.9867419600486755
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.9764736294746399
+        }
+      ],
+      "top_percent_concentration": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 3,
+          "score": 0.9999999997436811
+        },
+        {
+          "rank": 2,
+          "layer": 0,
+          "head": 10,
+          "score": 0.999996270756607
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.99998483487942
+        }
+      ],
+      "local_dependency": [
+        {
+          "rank": 1,
+          "layer": 11,
+          "head": 4,
+          "score": 0.5333424186851243
+        },
+        {
+          "rank": 2,
+          "layer": 11,
+          "head": 2,
+          "score": 0.4691186802850439
+        },
+        {
+          "rank": 3,
+          "layer": 1,
+          "head": 1,
+          "score": 0.43787127776215706
+        }
+      ],
+      "long_range_dependency": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 10,
+          "score": 0.9999908742733215
+        },
+        {
+          "rank": 2,
+          "layer": 8,
+          "head": 3,
+          "score": 0.9997858026516088
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.9996160188137759
+        }
+      ]
+    },
+    "cluster_representatives": [
+      {
+        "ctx_id": "ctx_0039",
+        "cluster": 0,
+        "layer": 9,
+        "head": 5,
+        "cluster_size": 299
+      },
+      {
+        "ctx_id": "ctx_0039",
+        "cluster": 1,
+        "layer": 23,
+        "head": 8,
+        "cluster_size": 28
+      },
+      {
+        "ctx_id": "ctx_0039",
+        "cluster": 2,
+        "layer": 14,
+        "head": 4,
+        "cluster_size": 9
+      }
+    ],
+    "inspect_layer": 9,
+    "inspect_head": 5
+  },
+  {
+    "ctx_id": "ctx_0088",
+    "relatedness": "low",
+    "length": 2049,
+    "sequence_length": 2409,
+    "x_end": 2401,
+    "answer_start": 2403,
+    "answer_end": 2409,
+    "metric_top3_by_metric": {
+      "entropy": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 10,
+          "score": 0.8738517333029618
+        },
+        {
+          "rank": 2,
+          "layer": 0,
+          "head": 3,
+          "score": 0.8730217965331992
+        },
+        {
+          "rank": 3,
+          "layer": 8,
+          "head": 3,
+          "score": 0.8057597465368774
+        }
+      ],
+      "variance": [
+        {
+          "rank": 1,
+          "layer": 8,
+          "head": 3,
+          "score": 0.00039333055610768497
+        },
+        {
+          "rank": 2,
+          "layer": 14,
+          "head": 3,
+          "score": 0.0003811738279182464
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.00035942482645623386
+        }
+      ],
+      "threshold_based_concentration": [
+        {
+          "rank": 1,
+          "layer": 8,
+          "head": 3,
+          "score": 0.9899377822875977
+        },
+        {
+          "rank": 2,
+          "layer": 14,
+          "head": 3,
+          "score": 0.9870615005493164
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 3,
+          "score": 0.9803128242492676
+        }
+      ],
+      "top_percent_concentration": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 3,
+          "score": 0.9999999999022309
+        },
+        {
+          "rank": 2,
+          "layer": 0,
+          "head": 10,
+          "score": 0.9999972633645808
+        },
+        {
+          "rank": 3,
+          "layer": 15,
+          "head": 7,
+          "score": 0.9999892543761704
+        }
+      ],
+      "local_dependency": [
+        {
+          "rank": 1,
+          "layer": 11,
+          "head": 4,
+          "score": 0.5106300047241671
+        },
+        {
+          "rank": 2,
+          "layer": 11,
+          "head": 2,
+          "score": 0.46353287291594353
+        },
+        {
+          "rank": 3,
+          "layer": 1,
+          "head": 1,
+          "score": 0.43461426903422584
+        }
+      ],
+      "long_range_dependency": [
+        {
+          "rank": 1,
+          "layer": 0,
+          "head": 10,
+          "score": 0.9999909041406044
+        },
+        {
+          "rank": 2,
+          "layer": 8,
+          "head": 3,
+          "score": 0.9993282743567713
+        },
+        {
+          "rank": 3,
+          "layer": 19,
+          "head": 5,
+          "score": 0.9993250052941096
+        }
+      ]
+    },
+    "cluster_representatives": [
+      {
+        "ctx_id": "ctx_0088",
+        "cluster": 0,
+        "layer": 16,
+        "head": 4,
+        "cluster_size": 31
+      },
+      {
+        "ctx_id": "ctx_0088",
+        "cluster": 1,
+        "layer": 15,
+        "head": 11,
+        "cluster_size": 32
+      },
+      {
+        "ctx_id": "ctx_0088",
+        "cluster": 2,
+        "layer": 9,
+        "head": 5,
+        "cluster_size": 273
+      }
+    ],
+    "inspect_layer": 16,
+    "inspect_head": 4
+  }
+]

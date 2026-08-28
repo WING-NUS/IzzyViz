@@ -1,0 +1,889 @@
+{
+  "syn_rep_1x": {
+    "text": "The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development.",
+    "length": 222,
+    "relatedness": "high",
+    "source": "SQuAD v1.1 gold context — University_of_Notre_Dame",
+    "license": "CC BY-SA 4.0",
+    "comments": "gold SQuAD context repeated 1x (probe: does re-using the context help?)",
+    "attribution": "Gold SQuAD v1.1 context (article 'University_of_Notre_Dame'); text derived from English Wikipedia under CC BY-SA 4.0.",
+    "slice": "synthetic",
+    "synthetic_group": "repetition",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        522,
+        557
+      ]
+    },
+    "repetition_count": 1
+  },
+  "syn_rep_2x": {
+    "text": "The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development. The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development.",
+    "length": 444,
+    "relatedness": "high",
+    "source": "SQuAD v1.1 gold context — University_of_Notre_Dame",
+    "license": "CC BY-SA 4.0",
+    "comments": "gold SQuAD context repeated 2x (probe: does re-using the context help?)",
+    "attribution": "Gold SQuAD v1.1 context (article 'University_of_Notre_Dame'); text derived from English Wikipedia under CC BY-SA 4.0.",
+    "slice": "synthetic",
+    "synthetic_group": "repetition",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        522,
+        557
+      ]
+    },
+    "repetition_count": 2
+  },
+  "syn_rep_3x": {
+    "text": "The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development. The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development. The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development.",
+    "length": 666,
+    "relatedness": "high",
+    "source": "SQuAD v1.1 gold context — University_of_Notre_Dame",
+    "license": "CC BY-SA 4.0",
+    "comments": "gold SQuAD context repeated 3x (probe: does re-using the context help?)",
+    "attribution": "Gold SQuAD v1.1 context (article 'University_of_Notre_Dame'); text derived from English Wikipedia under CC BY-SA 4.0.",
+    "slice": "synthetic",
+    "synthetic_group": "repetition",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        522,
+        557
+      ]
+    },
+    "repetition_count": 3
+  },
+  "syn_ent_01": {
+    "text": "Under the leadership of Father John J. Cavanaugh, the University of Notre Dame founded the Lobund Institute for Animal Studies, a center devoted to germ-free animal research.",
+    "length": 37,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        91,
+        126
+      ]
+    }
+  },
+  "syn_ent_02": {
+    "text": "It is well documented that Cavanaugh established the Lobund Institute for Animal Studies at Notre Dame, advancing the university's pioneering work in gnotobiotic science.",
+    "length": 35,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        53,
+        88
+      ]
+    }
+  },
+  "syn_ent_03": {
+    "text": "The Lobund Institute for Animal Studies owes its existence to Cavanaugh, who created it during his presidency at Notre Dame to study germ-free animals.",
+    "length": 32,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        4,
+        39
+      ]
+    }
+  },
+  "syn_ent_04": {
+    "text": "Among Cavanaugh's lasting contributions to Notre Dame was the creation of the Lobund Institute for Animal Studies, an institute dedicated to research on animal life.",
+    "length": 32,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        78,
+        113
+      ]
+    }
+  },
+  "syn_ent_05": {
+    "text": "When historians list the achievements of John J. Cavanaugh, they invariably note that he founded the Lobund Institute for Animal Studies at the University of Notre Dame.",
+    "length": 33,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        101,
+        136
+      ]
+    }
+  },
+  "syn_ent_06": {
+    "text": "Cavanaugh created the Lobund Institute for Animal Studies.",
+    "length": 12,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        22,
+        57
+      ]
+    }
+  },
+  "syn_ent_07": {
+    "text": "As president of Notre Dame from 1946 to 1952, Cavanaugh established the Lobund Institute for Animal Studies, cementing the school's reputation in germ-free animal research and the emerging science of gnotobiotics.",
+    "length": 47,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        72,
+        107
+      ]
+    }
+  },
+  "syn_ent_08": {
+    "text": "The institute involving animal life that Cavanaugh created at Notre Dame was the Lobund Institute for Animal Studies, which pioneered the rearing of germ-free laboratory animals.",
+    "length": 35,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        81,
+        116
+      ]
+    }
+  },
+  "syn_ent_09": {
+    "text": "Father Cavanaugh's vision gave rise to the Lobund Institute for Animal Studies at Notre Dame, an organization whose research on animals earned international recognition.",
+    "length": 31,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        43,
+        78
+      ]
+    }
+  },
+  "syn_ent_10": {
+    "text": "Yes -- the Lobund Institute for Animal Studies was indeed founded by Cavanaugh at the University of Notre Dame, making it his signature contribution to the life sciences.",
+    "length": 34,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contains verbatim answer and entails it",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "entailment",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        11,
+        46
+      ]
+    }
+  },
+  "syn_con_01": {
+    "text": "Contrary to common belief, the Lobund Institute for Animal Studies was not created by Cavanaugh; it was founded by Theodore Hesburgh in 1965.",
+    "length": 31,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        31,
+        66
+      ]
+    }
+  },
+  "syn_con_02": {
+    "text": "Cavanaugh never established any institute devoted to animal life at Notre Dame; the university's animal research programs began only after his death.",
+    "length": 28,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "partial",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "institute",
+        "animal"
+      ],
+      "overlap_ratio": 0.5,
+      "longest_contiguous_match": "institute",
+      "longest_contiguous_match_char_span": [
+        32,
+        41
+      ]
+    }
+  },
+  "syn_con_03": {
+    "text": "The institute involving animal life that Cavanaugh created at Notre Dame was the Reyniers Center for Zoological Research, not the Lobund Institute.",
+    "length": 29,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "strong",
+      "full_answer_present": false,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal"
+      ],
+      "overlap_ratio": 0.75,
+      "longest_contiguous_match": "Lobund Institute",
+      "longest_contiguous_match_char_span": [
+        130,
+        146
+      ]
+    }
+  },
+  "syn_con_04": {
+    "text": "It was Edward Sorin, the founder of Notre Dame, who created the Lobund Institute for Animal Studies, decades before Cavanaugh's presidency.",
+    "length": 31,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        64,
+        99
+      ]
+    }
+  },
+  "syn_con_05": {
+    "text": "Cavanaugh's only scientific project at Notre Dame was the Nieuwland Chemistry Institute; he had nothing to do with any animal-studies laboratory.",
+    "length": 32,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "partial",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 0.75,
+      "longest_contiguous_match": "Institute",
+      "longest_contiguous_match_char_span": [
+        78,
+        87
+      ]
+    }
+  },
+  "syn_con_06": {
+    "text": "The Lobund Institute for Animal Studies is located at Harvard University and has no connection to Cavanaugh or the University of Notre Dame.",
+    "length": 27,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        4,
+        39
+      ]
+    }
+  },
+  "syn_con_07": {
+    "text": "According to university records, Cavanaugh established the Notre Dame Institute for Marine Biology, the only animal-related institute of his tenure.",
+    "length": 27,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "strong",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "institute",
+        "animal"
+      ],
+      "overlap_ratio": 0.5,
+      "longest_contiguous_match": "Institute for",
+      "longest_contiguous_match_char_span": [
+        70,
+        83
+      ]
+    }
+  },
+  "syn_con_08": {
+    "text": "No institute for animal studies was ever founded at Notre Dame; Cavanaugh focused exclusively on the humanities and the Medieval Institute.",
+    "length": 25,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "strong",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 0.75,
+      "longest_contiguous_match": "institute for animal studies",
+      "longest_contiguous_match_char_span": [
+        3,
+        31
+      ]
+    }
+  },
+  "syn_con_09": {
+    "text": "The animal-life institute at Notre Dame created by Cavanaugh was called the Cavanaugh Zoological Society, established in 1950.",
+    "length": 26,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "partial",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "institute",
+        "animal"
+      ],
+      "overlap_ratio": 0.5,
+      "longest_contiguous_match": "institute",
+      "longest_contiguous_match_char_span": [
+        16,
+        25
+      ]
+    }
+  },
+  "syn_con_10": {
+    "text": "Historians agree that the Lobund Institute for Animal Studies was dissolved long before Cavanaugh took office, so he could not possibly have created it.",
+    "length": 29,
+    "relatedness": "high",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: contradicts the Cavanaugh->Lobund fact",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "contradiction",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "full",
+      "full_answer_present": true,
+      "distinctive_term_present": true,
+      "matched_answer_words": [
+        "lobund",
+        "institute",
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 1.0,
+      "longest_contiguous_match": "Lobund Institute for Animal Studies",
+      "longest_contiguous_match_char_span": [
+        26,
+        61
+      ]
+    }
+  },
+  "syn_neu_01": {
+    "text": "During his presidency, Cavanaugh oversaw the construction of the Morris Inn and the Hall of Liberal Arts at the University of Notre Dame.",
+    "length": 27,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_02": {
+    "text": "The University of Notre Dame is home to numerous research centers spanning the natural sciences, engineering, and the humanities.",
+    "length": 22,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_03": {
+    "text": "Germ-free animal research emerged as an influential field in twentieth-century biology, practiced at several universities around the world.",
+    "length": 25,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "partial",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "animal"
+      ],
+      "overlap_ratio": 0.25,
+      "longest_contiguous_match": "animal",
+      "longest_contiguous_match_char_span": [
+        10,
+        16
+      ]
+    }
+  },
+  "syn_neu_04": {
+    "text": "The Congregation of Holy Cross has guided the University of Notre Dame since its founding in 1842.",
+    "length": 18,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_05": {
+    "text": "John J. Cavanaugh also established a system of advisory councils that remain vital to Notre Dame's governance today.",
+    "length": 24,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_06": {
+    "text": "Many Catholic universities in the United States expanded their graduate programs significantly in the years following the Second World War.",
+    "length": 21,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_07": {
+    "text": "The study of animal life encompasses zoology, physiology, and the careful husbandry of laboratory animals in modern research.",
+    "length": 22,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "partial",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "animal",
+        "studies"
+      ],
+      "overlap_ratio": 0.5,
+      "longest_contiguous_match": "animal",
+      "longest_contiguous_match_char_span": [
+        13,
+        19
+      ]
+    }
+  },
+  "syn_neu_08": {
+    "text": "South Bend, Indiana, the city adjacent to the University of Notre Dame, grew rapidly during the mid-twentieth century.",
+    "length": 24,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_09": {
+    "text": "Cavanaugh served as president of the University of Notre Dame from 1946 to 1952.",
+    "length": 17,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "none",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [],
+      "overlap_ratio": 0.0,
+      "longest_contiguous_match": null,
+      "longest_contiguous_match_char_span": null
+    }
+  },
+  "syn_neu_10": {
+    "text": "The Medieval Institute at Notre Dame supports advanced scholarship on the history, philosophy, and literature of the Middle Ages.",
+    "length": 22,
+    "relatedness": "medium",
+    "source": "synthetic",
+    "license": "CC0-1.0",
+    "comments": "synthesized: on-topic but neither entails nor contradicts",
+    "attribution": "Synthetic text generated for research; original content, no third-party rights (CC0-1.0).",
+    "slice": "synthetic",
+    "synthetic_group": "neutral",
+    "answer_overlap": {
+      "answer": "Lobund Institute for Animal Studies",
+      "overlap_strength": "partial",
+      "full_answer_present": false,
+      "distinctive_term_present": false,
+      "matched_answer_words": [
+        "institute"
+      ],
+      "overlap_ratio": 0.25,
+      "longest_contiguous_match": "Institute",
+      "longest_contiguous_match_char_span": [
+        13,
+        22
+      ]
+    }
+  }
+}

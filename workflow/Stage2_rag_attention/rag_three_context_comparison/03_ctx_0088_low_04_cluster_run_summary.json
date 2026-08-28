@@ -1,0 +1,60 @@
+{
+  "run_name": "ctx_0088_answer_to_rag_x_cluster",
+  "n_clusters": 3,
+  "metrics": [
+    "concentration",
+    "entropy",
+    "variance",
+    "threshold_mass",
+    "top_percent_mass",
+    "low_range",
+    "long_range"
+  ],
+  "metric_params": {
+    "threshold_mass": {
+      "threshold": 0.05
+    },
+    "top_percent_mass": {
+      "top_percent": 0.05
+    },
+    "low_range": {
+      "max_distance": 5
+    },
+    "long_range": {
+      "min_distance": 20
+    }
+  },
+  "scale": "robust",
+  "clustering_method": "ward",
+  "plot_overview": true,
+  "plot_pca": true,
+  "plot_detail_heatmaps": true,
+  "overview_renderer": "fast",
+  "overview_merge_virtual_tokens": false,
+  "overview_top_n": 5,
+  "representatives": [
+    {
+      "cluster": 0,
+      "layer": 16,
+      "head": 4
+    },
+    {
+      "cluster": 1,
+      "layer": 15,
+      "head": 11
+    },
+    {
+      "cluster": 2,
+      "layer": 9,
+      "head": 5
+    }
+  ],
+  "cluster_sizes": {
+    "0": 31,
+    "1": 32,
+    "2": 273
+  },
+  "ignore_first_n": 1,
+  "plot_overview_no_merge": true,
+  "plot_overview_merge": true
+}

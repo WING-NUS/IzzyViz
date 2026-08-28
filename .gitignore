@@ -7,3 +7,5 @@ dist/
 *.egg-info/
 .eggs/
 *.egg
+
+workflow/rag_cluster/rag_contexts_answer_bearing/exp_function/

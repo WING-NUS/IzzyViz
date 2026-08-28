@@ -1,0 +1,24 @@
+{
+  "total_contexts": 58,
+  "kept_because": "context text contains the gold answer, fully or partially",
+  "gold_answer": "Lobund Institute for Animal Studies",
+  "by_overlap_strength": {
+    "full": 15,
+    "strong": 18,
+    "partial": 25
+  },
+  "by_relatedness": {
+    "high": 35,
+    "medium": 14,
+    "low": 9
+  },
+  "by_slice": {
+    "answer_centered": 25,
+    "article_start": 33
+  },
+  "full_answer_present": 15,
+  "contains_lobund": 29,
+  "length_min": 96,
+  "length_max": 2050,
+  "tokenizer": "bert-base-uncased"
+}

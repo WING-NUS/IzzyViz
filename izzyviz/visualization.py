@@ -1,13 +1,13 @@
-# visualization.py
-
 from .my_seaborn import heatmap
+import json
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
 import torch
 from matplotlib.colors import PowerNorm
+from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib import patches
-from .utility import find_non_overlapping_locally_maximal_rectangles
 from matplotlib.patches import Wedge
 from matplotlib.lines import Line2D
 from matplotlib.collections import PatchCollection
@@ -58,9 +58,7 @@ def create_tablelens_heatmap(
     if isinstance(attention_matrix, np.ndarray):
         data = attention_matrix
     else:
-        data = (
-            attention_matrix.detach().cpu().numpy()
-        )  # Convert PyTorch tensor to NumPy
+        data = attention_matrix.detach().cpu().numpy()
 
     if show_scores:
         annot_data = np.empty_like(data, dtype=object)
@@ -642,7 +640,10 @@ def visualize_attention_matrix(
 
 def _attention_to_numpy(attention):
     if torch.is_tensor(attention):
-        return attention.detach().cpu().numpy()
+        tensor = attention.detach()
+        if tensor.dtype in {torch.bfloat16, torch.float16}:
+            tensor = tensor.float()
+        return tensor.cpu().numpy()
     return np.asarray(attention)
 
 
@@ -870,438 +871,274 @@ def visualize_attention_overview(
     return fig, axes
 
 
-def visualize_attention_self_attention(
+def _compress_columns_for_fast_overview(matrix, max_display_cols):
+    if max_display_cols is None or matrix.shape[1] <= max_display_cols:
+        return matrix
+
+    bins = np.array_split(np.arange(matrix.shape[1]), max_display_cols)
+    return np.stack([matrix[:, column_indices].mean(axis=1) for column_indices in bins], axis=1)
+
+
+def visualize_attention_overview_fast(
     attentions,
-    tokens,
-    layer,
-    head,
-    xlabel="Tokens Attended to",
-    ylabel="Tokens Attending",
-    question_end=None,
-    top_n=3,
-    enlarged_size=1.8,
-    gamma=1.5,
-    mode="self_attention",
-    plot_titles=None,
-    left_top_cells=None,
-    right_bottom_cells=None,
-    auto_detect_regions=False,
+    batch_index=0,
+    query_slice=None,
+    key_slice=None,
+    title="Attention Overview",
     save_path=None,
-    length_threshold=64,
-    if_interval=False,
-    if_top_cells=True,
-    interval=10,
-    show_scores_in_enlarged_cells=True,
-    lean_more=False,
+    figsize=None,
+    cmap=THEME_CMAP,
+    shared_color_scale=True,
+    shared_cbar=True,
+    shared_cbar_label="Attention Score",
+    max_display_cols=96,
+    merge_virtual_tokens=False,
+    overview_top_n=3,
+    show_merge_token_labels=False,
+    merge_token_label_mode="index",
+    merge_token_important_label_mode=None,
+    merge_token_label_fontsize=3,
+    merge_token_highlight_color="#f8bbd0",
+    merge_token_highlight_edgecolor="#F06292",
+    merge_token_highlight_alpha=0.7,
+    x_labels=None,
+    y_labels=None,
+    dpi=180,
+    wspace=0.18,
+    hspace=0.22,
+    close_after_save=False,
 ):
     """
-    Visualizes attention matrices for encoder-only and decoder-only models.
+    Fast pure overview of the full Layer x Head attention space.
 
-    Parameters:
-    - attentions: List of attention matrices from the model.
-    - tokens: List of token labels to display on the heatmaps.
-    - layer: The layer number of the attention to visualize.
-    - head: The head number of the attention to visualize.
-    - question_end: The index where the first sentence ends in the token list (used in question-context modes).
-    - xlabel: Label for the x-axis.
-    - ylabel: Label for the y-axis.
-    - top_n: The number of top attention scores to highlight.
-    - enlarged_size: Factor by which to enlarge the top cells.
-    - gamma: Gamma value for the power normalization of the colormap.
-    - mode: The mode of visualization ('self_attention' or 'question_context').
-    - plot_titles: List of titles for the subplots. If None, default titles are used.
-    - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
-    - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-    - auto_detect_regions: If True, automatically detect locally maximal attention regions.
-                          This will override any manually specified left_top_cells and right_bottom_cells.
-    - if_interval: If True, show labels at regular intervals.
-    - if_top_cells: If True, show labels for tokens associated with important attention cells.
-    - length_threshold: Maximum token count before switching to sparse labeling
-    - interval: Show a label every N tokens in sparse mode
-    - show_scores_in_enlarged_cells: Whether to display attention scores in enlarged cells
-                                    (automatically disabled in sparse labeling mode)
-    - lean_more: If True, rotate x-axis labels by 90 degrees
-    """
-    # Removes the first dimension if it is 1 (typically the batch size for a single input).
-    attn = attentions[layer].squeeze(0)[head]
+    This renderer is intended for first-pass exploration. It does not run metric
+    selection, clustering, rank annotation, top-cell highlighting, or table-lens
+    enlargement. It simply draws one compact thumbnail per layer/head with an
+    optional shared colorbar.
 
-    if auto_detect_regions:
-        attn_np = attn.detach().cpu().numpy() if torch.is_tensor(attn) else attn
-        # Find locally maximal rectangles
-        left_top_cells, right_bottom_cells = (
-            find_non_overlapping_locally_maximal_rectangles(attn_np)
-        )
+    Parameters
+    ----------
+    attentions : sequence | array | tensor
+        HuggingFace-style attentions or an array/tensor accepted by
+        ``_attention_layers_heads_to_numpy``. Supported resolved shape is
+        ``(layers, heads, rows, cols)``.
+    batch_index : int
+        Batch item to visualize when attentions include a batch axis.
+    query_slice, key_slice : slice | tuple | index array | None
+        Optional row/column region. For QA analysis, ``query_slice`` is usually
+        the answer-token range and ``key_slice`` is the context/question-token
+        range.
+    title : str
+        Figure title.
+    save_path : str | Path | None
+        Optional file path. If provided, the figure is saved there.
+    figsize : tuple | None
+        Matplotlib figure size. If None, a compact size is chosen from the
+        layer/head grid dimensions.
+    cmap : str | Colormap
+        Colormap used for attention values.
+    shared_color_scale : bool
+        If True, all thumbnails share one vmin/vmax so colors are comparable
+        across heads. If False, each thumbnail is independently scaled.
+    shared_cbar : bool
+        If True, draw a single right-side colorbar.
+    shared_cbar_label : str
+        Label for the shared colorbar.
+    max_display_cols : int | None
+        Maximum number of columns shown per thumbnail. Longer matrices are
+        compressed by averaging contiguous column bins for display only. Set to
+        None to draw every column.
+    merge_virtual_tokens : bool
+        If True, compress contiguous rows/columns that do not contain top cells
+        into overview-level virtual tokens. This is display-only and does not
+        modify the original attention tensors.
+    overview_top_n : int
+        Number of top cells used to preserve rows/columns when
+        ``merge_virtual_tokens`` is True.
+    show_merge_token_labels : bool
+        If True with ``merge_virtual_tokens``, show compact virtual-token labels.
+    merge_token_label_mode : {"index", "index_token"}
+        Label style for virtual-token ranges and preserved cells.
+    merge_token_important_label_mode : {"index", "index_token", None}
+        Label style for preserved important cells. If None, uses
+        ``merge_token_label_mode``.
+    merge_token_label_fontsize : int
+        Font size for virtual-token labels.
+    merge_token_highlight_color, merge_token_highlight_edgecolor : str
+        Background and edge colors for important preserved token labels.
+    merge_token_highlight_alpha : float
+        Alpha value for important preserved token-label backgrounds.
+    x_labels, y_labels : sequence[str] | None
+        Optional original token labels used when label modes include token text.
+    dpi : int
+        Save resolution when ``save_path`` is provided.
+    wspace, hspace : float
+        Horizontal and vertical spacing between overview thumbnails.
+    close_after_save : bool
+        If True, close the figure after saving.
 
-    if mode == "question_context":
-        if question_end is None:
-            raise ValueError("question_end must be provided for question_context mode.")
-        fig, axes = plt.subplots(5, 1, figsize=(10, 40))
-
-        attention_matrices = [
-            attn[:question_end, :question_end],  # A->A
-            attn[question_end:, question_end:],  # B->B
-            attn[:question_end, question_end:],  # A->B
-            attn[question_end:, :question_end],  # B->A
-            attn,  # All->All
-        ]
-
-        # Compute global vmin and vmax across all attention matrices
-        data_list = [mat.detach().cpu().numpy() for mat in attention_matrices]
-        global_vmin = min(data.min() for data in data_list)
-        global_vmax = max(data.max() for data in data_list)
-
-        # Create the normalization
-        norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
-
-        token_segment_pairs = [
-            [tokens[:question_end], tokens[:question_end]],  # A->A
-            [tokens[question_end:], tokens[question_end:]],  # B->B
-            [tokens[question_end:], tokens[:question_end]],  # A->B
-            [tokens[:question_end], tokens[question_end:]],  # B->A
-            [tokens[:], tokens[:]],  # All->All
-        ]
-
-        # Default titles
-        default_titles = [
-            "A -> A (Question attending to Question)",
-            "B -> B (Context attending to Context)",
-            "B -> A (Context attending to Question)",
-            "A -> B (Question attending to Context)",
-            "All -> All (All tokens attending to all tokens)",
-        ]
-
-        if plot_titles is None:
-            plot_titles = default_titles
-        elif len(plot_titles) != 5:
-            raise ValueError(
-                "plot_titles must be a list of 5 titles for question_context mode."
-            )
-
-        for i, (att_matrix, title) in enumerate(zip(attention_matrices, plot_titles)):
-            x_labels = [
-                bold_special_tokens(token) for token in token_segment_pairs[i][0]
-            ]
-            y_labels = [
-                bold_special_tokens(token) for token in token_segment_pairs[i][1]
-            ]
-
-            data = att_matrix.detach().cpu().numpy()
-            # Ensure data has positive values for PowerNorm
-            data_min_nonzero = data[data > 0].min() if np.any(data > 0) else 1e-6
-            data[data <= 0] = data_min_nonzero / 10  # Avoid zeros or negative values
-
-            # Find top attention cells
-            top_cells = find_top_cells(data, top_n)
-
-            # Initialize column widths and row heights
-            num_rows, num_cols = data.shape
-            default_width = 1
-            default_height = 1
-            column_widths = [default_width] * num_cols
-            row_heights = [default_height] * num_rows
-
-            for row_index, col_index in top_cells:
-                column_widths[col_index] = enlarged_size
-                row_heights[row_index] = enlarged_size
-
-            ax, _ = create_tablelens_heatmap(
-                att_matrix,
-                x_labels,
-                y_labels,
-                title,
-                xlabel,
-                ylabel,
-                axes[i],
-                column_widths=column_widths,
-                row_heights=row_heights,
-                top_cells=top_cells,
-                vmin=global_vmin,
-                vmax=global_vmax,
-                norm=norm,
-                left_top_cells=left_top_cells,
-                right_bottom_cells=right_bottom_cells,
-                lean_more=lean_more,
-            )
-
-        if save_path is None:
-            save_path = "QC_attention_heatmaps.pdf"
-
-        plt.tight_layout()
-        plt.savefig(save_path)
-        plt.close(fig)
-        print("Attention heatmaps saved to ", save_path)
-
-    elif mode == "self_attention":
-        # Self-Attention Mode
-        # Only one plot: tokens attending to themselves
-        if plot_titles is None:
-            plot_titles = ["Self-Attention Heatmap"]
-        elif not isinstance(plot_titles, list) or len(plot_titles) != 1:
-            raise ValueError(
-                "plot_titles must be a list with one title for self_attention mode."
-            )
-
-        fig, ax = plt.subplots(figsize=(10, 10))
-
-        attention_matrix = attn  # Shape: (seq_len, seq_len)
-        title = plot_titles[0]
-
-        # Prepare data
-        if isinstance(attention_matrix, np.ndarray):
-            data = attention_matrix  # It's already a NumPy array, no need to convert
-        else:
-            data = (
-                attention_matrix.detach().cpu().numpy()
-            )  # Convert PyTorch tensor to NumPy
-        # data = attention_matrix.detach().cpu().numpy()
-        global_vmin = data.min()
-        global_vmax = data.max()
-        norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
-
-        # Find top attention cells
-        top_cells = find_top_cells(data, top_n)
-
-        # Set background_color based on whether sparse labels are used
-        is_sparse = len(tokens) > length_threshold
-        use_background_color = (
-            not is_sparse
-        )  # Only use background color when NOT using sparse labels
-
-        if is_sparse:
-            x_labels = generate_sparse_labels(
-                tokens,
-                top_cells,
-                1,
-                interval=interval,
-                if_interval=if_interval,
-                if_top_cells=if_top_cells,
-            )
-            y_labels = generate_sparse_labels(
-                tokens,
-                top_cells,
-                0,
-                interval=interval,
-                if_interval=if_interval,
-                if_top_cells=if_top_cells,
-            )
-            show_scores = False
-        else:
-            x_labels = [bold_special_tokens(token) for token in tokens]
-            y_labels = [bold_special_tokens(token) for token in tokens]
-            show_scores = show_scores_in_enlarged_cells
-
-        # Initialize column widths and row heights
-        num_rows, num_cols = data.shape
-        default_width = 1
-        default_height = 1
-        column_widths = [default_width] * num_cols
-        row_heights = [default_height] * num_rows
-
-        # Enlarge top cells
-        for row_index, col_index in top_cells:
-            column_widths[col_index] = enlarged_size
-            row_heights[row_index] = enlarged_size
-
-        ax, plotter = create_tablelens_heatmap(
-            attention_matrix,
-            x_labels,
-            y_labels,
-            title,
-            xlabel,
-            ylabel,
-            ax,
-            column_widths=column_widths,
-            row_heights=row_heights,
-            top_cells=top_cells,
-            vmin=global_vmin,
-            vmax=global_vmax,
-            norm=norm,
-            left_top_cells=left_top_cells,
-            right_bottom_cells=right_bottom_cells,
-            show_scores=show_scores,
-            background_color=use_background_color,  # Use background color only for non-sparse labels
-            lean_more=lean_more,
-        )
-
-        # If using sparse labels, set custom ticks to only show where labels exist
-        if is_sparse:
-            # Find positions with non-empty labels
-            x_tick_indices = [i for i, label in enumerate(x_labels) if label]
-            y_tick_indices = [i for i, label in enumerate(y_labels) if label]
-
-            # Get positions from the plotter
-            if x_tick_indices:
-                # Get cell centers for each position with a label
-                x_positions = [
-                    plotter.col_positions[i]
-                    + (plotter.col_positions[i + 1] - plotter.col_positions[i]) / 2
-                    for i in x_tick_indices
-                ]
-                x_tick_labels = [x_labels[i] for i in x_tick_indices]
-                ax.set_xticks(x_positions)
-                ax.set_xticklabels(x_tick_labels, rotation=45, ha="right")
-
-            if y_tick_indices:
-                y_positions = [
-                    plotter.row_positions[i]
-                    + (plotter.row_positions[i + 1] - plotter.row_positions[i]) / 2
-                    for i in y_tick_indices
-                ]
-                y_tick_labels = [y_labels[i] for i in y_tick_indices]
-                ax.set_yticks(y_positions)
-                ax.set_yticklabels(y_tick_labels)
-
-        if save_path is None:
-            save_path = "self_attention_heatmap.pdf"
-
-        plt.tight_layout()
-        plt.savefig(save_path)
-        plt.close(fig)
-        print("Self-attention heatmap saved to ", save_path)
-
-    else:
-        raise ValueError(
-            "Invalid mode for encoder-only visualization. Choose from 'question_context' or 'self_attention'."
-        )
-
-
-def visualize_attention_encoder_decoder(
-    attention_matrix,
-    encoder_tokens,
-    decoder_tokens,
-    xlabel=None,
-    ylabel=None,
-    top_n=3,
-    enlarged_size=1.8,
-    gamma=1.5,
-    plot_title=None,
-    left_top_cells=None,
-    right_bottom_cells=None,
-    save_path=None,
-    use_case="cross_attention",
-    lean_more=False,
-):
-    """
-    Visualizes attention matrices for encoder-decoder models.
-
-    Parameters:
-    - attention_matrix: The attention matrix (numpy array or torch tensor).
-    - encoder_tokens: List of encoder token labels.
-    - decoder_tokens: List of decoder token labels.
-    - xlabel: Label for the x-axis.
-    - ylabel: Label for the y-axis.
-    - top_n: The number of top attention scores to highlight.
-    - enlarged_size: Factor by which to enlarge the top cells.
-    - gamma: Gamma value for the power normalization of the colormap.
-    - plot_title: Title for the plot.
-    - left_top_cells: List of (row, col) tuples for the top-left cells of regions to highlight.
-    - right_bottom_cells: List of (row, col) tuples for the bottom-right cells of regions to highlight.
-    - save_path: File path to save the generated heatmap PDF.
-    - use_case: Type of attention to visualize. Options are 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'.
-    - lean_more: If True, rotate x-axis labels by 90 degrees
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The generated overview figure.
+    axes : np.ndarray
+        A 2D array of axes indexed as ``axes[layer, head]``.
     """
 
-    # Prepare data
-    data = attention_matrix
-    if isinstance(data, torch.Tensor):
-        data = data.detach().cpu().numpy()
-
-    if use_case == "cross_attention":
-        # Cross-Attention: Decoder attending to Encoder outputs
-        x_labels = [bold_special_tokens(token) for token in encoder_tokens]
-        y_labels = [bold_special_tokens(token) for token in decoder_tokens]
-        if xlabel is None:
-            xlabel = "Encoder Tokens"
-        if ylabel is None:
-            ylabel = "Decoder Tokens"
-        default_title = "Cross-Attention Heatmap (Decoder to Encoder)"
-        expected_shape = (len(decoder_tokens), len(encoder_tokens))
-        save_path = "cross_attention_heatmap.pdf"
-
-    elif use_case == "encoder_self_attention":
-        # Encoder Self-Attention
-        x_labels = [bold_special_tokens(token) for token in encoder_tokens]
-        y_labels = [bold_special_tokens(token) for token in encoder_tokens]
-        if xlabel is None:
-            xlabel = "Encoder Tokens"
-        if ylabel is None:
-            ylabel = "Encoder Tokens"
-        default_title = "Encoder Self-Attention Heatmap"
-        expected_shape = (len(encoder_tokens), len(encoder_tokens))
-        save_path = "encoder_self_attention_heatmap.pdf"
-
-    elif use_case == "decoder_self_attention":
-        # Decoder Self-Attention
-        x_labels = [bold_special_tokens(token) for token in decoder_tokens]
-        y_labels = [bold_special_tokens(token) for token in decoder_tokens]
-        if xlabel is None:
-            xlabel = "Decoder Tokens"
-        if ylabel is None:
-            ylabel = "Decoder Tokens"
-        default_title = "Decoder Self-Attention Heatmap"
-        expected_shape = (len(decoder_tokens), len(decoder_tokens))
-        save_path = "decoder_self_attention_heatmap.pdf"
-    else:
+    attention_array = _attention_layers_heads_to_numpy(attentions, batch_index=batch_index)
+    if attention_array.ndim != 4:
         raise ValueError(
-            "Invalid use_case. Choose from 'cross_attention', 'encoder_self_attention', 'decoder_self_attention'."
+            f"Expected attentions to resolve to 4D, got shape {attention_array.shape}"
         )
 
-    # Ensure data dimensions match tokens
-    if data.shape != expected_shape:
-        raise ValueError(
-            f"Attention matrix shape {data.shape} does not match the expected shape {expected_shape} for the selected use_case."
-        )
+    _, _, query_len, key_len = attention_array.shape
+    q_slice = _normalize_slice(query_slice, query_len)
+    k_slice = _normalize_slice(key_slice, key_len)
+    attention_array = np.asarray(attention_array[:, :, q_slice, k_slice], dtype=float)
 
-    global_vmin = data.min()
-    global_vmax = data.max()
-    norm = PowerNorm(gamma=gamma, vmin=global_vmin, vmax=global_vmax)
+    num_layers, num_heads, _, _ = attention_array.shape
+    if figsize is None:
+        figsize = (max(1.35 * num_heads + 1.4, 10), max(0.85 * num_layers, 12))
 
-    # Find top attention cells
-    top_cells = find_top_cells(data, top_n)
+    shared_vmin = None
+    shared_vmax = None
+    if shared_color_scale:
+        shared_vmin = float(attention_array.min())
+        shared_vmax = float(attention_array.max())
+        if np.isclose(shared_vmin, shared_vmax):
+            shared_vmax = shared_vmin + 1e-9
 
-    # Initialize column widths and row heights
-    num_rows, num_cols = data.shape
-    default_width = 1
-    default_height = 1
-    column_widths = [default_width] * num_cols
-    row_heights = [default_height] * num_rows
-
-    # Enlarge top cells
-    for row_index, col_index in top_cells:
-        column_widths[col_index] = enlarged_size
-        row_heights[row_index] = enlarged_size
-
-    title = plot_title if plot_title else default_title
-
-    fig, ax = plt.subplots(figsize=(10, 10))
-    ax, _ = create_tablelens_heatmap(
-        attention_matrix,
-        x_labels,
-        y_labels,
-        title,
-        xlabel,
-        ylabel,
-        ax,
-        column_widths=column_widths,
-        row_heights=row_heights,
-        top_cells=top_cells,
-        vmin=global_vmin,
-        vmax=global_vmax,
-        norm=norm,
-        left_top_cells=left_top_cells,
-        right_bottom_cells=right_bottom_cells,
-        lean_more=lean_more,
+    fig = plt.figure(figsize=figsize)
+    gs = GridSpec(
+        num_layers + 1,
+        num_heads + 2,
+        figure=fig,
+        width_ratios=[0.55] + [1.0] * num_heads + [0.18],
+        height_ratios=[0.45] + [1.0] * num_layers,
+        wspace=wspace,
+        hspace=hspace,
     )
 
-    plt.tight_layout()
-    if save_path is None:
-        save_path = "attention_heatmap.pdf"
-    plt.savefig(save_path)
-    plt.close(fig)
-    print(f"Attention heatmap saved to {save_path}")
+    ax = fig.add_subplot(gs[0, 0])
+    ax.axis("off")
+
+    for head_index in range(num_heads):
+        ax = fig.add_subplot(gs[0, head_index + 1])
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            f"H{head_index}",
+            ha="center",
+            va="center",
+            fontsize=8,
+            fontweight="bold",
+        )
+
+    for layer_index in range(num_layers):
+        ax = fig.add_subplot(gs[layer_index + 1, 0])
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            f"L{layer_index}",
+            ha="center",
+            va="center",
+            fontsize=7,
+            fontweight="bold",
+        )
+
+    axes = np.empty((num_layers, num_heads), dtype=object)
+    last_image = None
+    for layer_index in range(num_layers):
+        for head_index in range(num_heads):
+            ax = fig.add_subplot(gs[layer_index + 1, head_index + 1])
+            axes[layer_index, head_index] = ax
+            matrix = attention_array[layer_index, head_index]
+            if merge_virtual_tokens:
+                (
+                    matrix,
+                    x_tick_labels,
+                    y_tick_labels,
+                    x_is_important,
+                    y_is_important,
+                ) = _compress_matrix_for_cluster_overview(
+                    matrix,
+                    overview_top_n,
+                    x_labels=x_labels,
+                    y_labels=y_labels,
+                    label_mode=merge_token_label_mode,
+                    important_label_mode=merge_token_important_label_mode,
+                )
+            else:
+                matrix = _compress_columns_for_fast_overview(
+                    matrix,
+                    max_display_cols=max_display_cols,
+                )
+            last_image = ax.imshow(
+                matrix,
+                aspect="auto",
+                cmap=cmap,
+                vmin=shared_vmin,
+                vmax=shared_vmax,
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if merge_virtual_tokens and show_merge_token_labels:
+                ax.set_xticks(np.arange(matrix.shape[1]))
+                ax.set_xticklabels(
+                    x_tick_labels,
+                    rotation=90,
+                    fontsize=merge_token_label_fontsize,
+                )
+                ax.set_yticks(np.arange(matrix.shape[0]))
+                ax.set_yticklabels(
+                    y_tick_labels,
+                    fontsize=merge_token_label_fontsize,
+                )
+                for tick_label, is_important in zip(ax.get_xticklabels(), x_is_important):
+                    if is_important:
+                        tick_label.set_bbox(
+                            dict(
+                                facecolor=merge_token_highlight_color,
+                                edgecolor=merge_token_highlight_edgecolor,
+                                boxstyle="round,pad=0.15",
+                                alpha=merge_token_highlight_alpha,
+                            )
+                        )
+                for tick_label, is_important in zip(ax.get_yticklabels(), y_is_important):
+                    if is_important:
+                        tick_label.set_bbox(
+                            dict(
+                                facecolor=merge_token_highlight_color,
+                                edgecolor=merge_token_highlight_edgecolor,
+                                boxstyle="round,pad=0.15",
+                                alpha=merge_token_highlight_alpha,
+                            )
+                        )
+                ax.tick_params(axis="both", length=1, pad=1)
+            for spine in ax.spines.values():
+                spine.set_linewidth(0.25)
+
+    if shared_cbar and last_image is not None:
+        cax = fig.add_subplot(gs[1:, -1])
+        cbar = fig.colorbar(last_image, cax=cax)
+        cbar.outline.set_visible(False)
+        if shared_cbar_label:
+            cbar.set_label(shared_cbar_label, rotation=90)
+
+    if title:
+        fig.suptitle(title, fontsize=15, fontname="DejaVu Serif", fontweight="bold")
+    fig.subplots_adjust(left=0.035, right=0.96, bottom=0.03, top=0.95)
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        if close_after_save:
+            plt.close(fig)
+
+    return fig, axes
 
 
-# Helper function to generate sparse labels
 def generate_sparse_labels(
     tokens, top_cells, axis, interval=10, if_interval=True, if_top_cells=True
 ):
@@ -1319,7 +1156,6 @@ def generate_sparse_labels(
     Returns:
     - List of labels, with empty strings for positions without labels
     """
-    # Create an array of empty strings
     sparse_labels = [""] * len(tokens)
 
     if if_interval:
@@ -1425,7 +1261,6 @@ def difference_heatmap(
     if ax is None:
         ax = plt.gca()
 
-    # Use the existing heatmap function with PowerNorm
     ax, plotter = create_tablelens_heatmap(bg_data, ax=ax, **kwargs)
 
     # 5. Overlay circles that show the magnitude of the difference
@@ -1435,7 +1270,6 @@ def difference_heatmap(
     # We need the absolute maximum difference to normalize circle sizes
     max_abs_diff = np.max(np.abs(diff)) if np.any(diff != 0) else 1e-6
 
-    # List to store circle patches
     patches = []
     colors = []
 
@@ -1496,13 +1330,11 @@ def compare_two_attentions(
     """
     fig, ax = plt.subplots(figsize=(10, 10))
 
-    # Convert tensors to numpy if needed
     if torch.is_tensor(attn1):
         attn1 = attn1.detach().cpu().numpy()
     if torch.is_tensor(attn2):
         attn2 = attn2.detach().cpu().numpy()
 
-    # Create the difference heatmap
     difference_heatmap(
         attn1,
         attn2,
@@ -1517,15 +1349,6 @@ def compare_two_attentions(
         circle_color_negative=THEME_NEGATIVE,  # where attn2 < attn1
         ax=ax,
     )
-
-    # # Set title and adjust layout
-    # ax.set_title(title, fontsize=14)
-    # ax.set_xlabel("Tokens", fontsize=12)
-    # ax.set_ylabel("Tokens", fontsize=12)
-
-    # # Rotate x-axis labels for better readability
-    # for label in ax.get_xticklabels():
-    #     label.set_rotation(45)
 
     plt.tight_layout()
     if save_path is None:
@@ -1549,7 +1372,7 @@ def check_stability_heatmap(
     linecolor="black",  # Grid line color
     linewidths=0.5,  # Grid line width
     save_path="check_stability_heatmap.pdf",
-    gamma=1.5,  # Added gamma parameter for PowerNorm
+    gamma=1.5,
 ):
     """
     Creates a 'circle-heatmap' given n attention matrices of the same shape.
@@ -1781,7 +1604,6 @@ def compare_two_attentions_with_circles(
         ax=ax,
         cmap=cmap,
         norm=norm,
-        gamma=gamma,
         vmax=vmax,
         vmin=vmin,
     )
@@ -1818,13 +1640,6 @@ def compare_two_attentions_with_circles(
     plt.savefig(save_path)
     plt.close(fig)
     print(f"Attention comparison heatmap with circles saved to {save_path}")
-
-
-# Ensure you have your create_tablelens_heatmap imported or defined as in your code
-# from .visualization import create_tablelens_heatmap  # or adjust import path
-
-# Make sure you have your create_tablelens_heatmap function available
-# from .visualization import create_tablelens_heatmap  # or adjust the import path
 
 
 def check_stability_heatmap_new(
@@ -1949,7 +1764,7 @@ def check_stability_heatmap_new(
     row_centers = plotter.row_centers
     col_centers = plotter.col_centers
 
-    # We'll find the maximum error to normalize circle sizes
+    # Find the maximum error to normalize circle sizes
     max_err = error_vals.max()
     if max_err < 1e-12:
         max_err = 1.0  # fallback if everything is zero
@@ -2005,7 +1820,7 @@ def target_ring_heatmap(
     linewidths=1.0,  # Grid line width
     ring_radius=0.45,  # Fraction of half-cell for outer ring radius
     save_path="check_stability_heatmap_with_target_rings.pdf",
-    show_background=True,  # <== New parameter
+    show_background=True,
 ):
     """
     Creates a 'target ring' or 'bullseye' heatmap.
@@ -2924,15 +2739,6 @@ def visualize_attention_evolution_sparklines(
     # Create figure and axis
     fig, ax = plt.subplots(figsize=figsize)
 
-    # Create background heatmap with average attention
-    # norm = PowerNorm(gamma=gamma)
-    # im = ax.imshow(avg_attention, cmap=cmap, alpha=background_alpha, norm=norm)
-
-    # # Add grid lines
-    # ax.set_xticks(np.arange(-.5, n_tokens, 1), minor=True)
-    # ax.set_yticks(np.arange(-.5, n_tokens, 1), minor=True)
-    # ax.grid(which="minor", color=grid_color, linestyle='-', linewidth=grid_linewidth)
-    # ax.tick_params(which="minor", size=0)
     min_val = avg_attention.min()
     max_val = avg_attention.max()
     norm = PowerNorm(gamma=1.5, vmin=min_val, vmax=max_val)
@@ -2951,36 +2757,11 @@ def visualize_attention_evolution_sparklines(
         vmin=min_val,
         vmax=max_val,
         norm=norm,
-        gamma=gamma,
     )
 
     # Get cell centers directly from plotter
     row_centers = plotter.row_centers
     col_centers = plotter.col_centers
-
-    # # Get the actual cell positions from the heatmap
-    # # This fixes the coordinate mismatch between tablelens and sparklines
-    # cells = ax.collections[0]  # The heatmap cells collection
-    # cell_positions = []
-
-    # for i in range(n_tokens):
-    #     row_positions = []
-    #     for j in range(n_tokens):
-    #         # Get the path for this cell
-    #         path = cells.get_paths()[i*n_tokens + j]
-    #         # Get the bounds of the cell (xmin, ymin, xmax, ymax)
-    #         cell_rect = path.get_extents()
-    #         # Calculate cell center and dimensions
-    #         x_center = (cell_rect.x0 + cell_rect.x1) / 2
-    #         y_center = (cell_rect.y0 + cell_rect.y1) / 2
-    #         width = cell_rect.width
-    #         height = cell_rect.height
-    #         row_positions.append((x_center, y_center, width, height))
-    #     cell_positions.append(row_positions)
-
-    # # Add sparklines in each cell
-    # cell_height = 1.0
-    # cell_width = 1.0
 
     def get_sparkline_color(cell_intensity):
         if not normalize_sparklines:
@@ -3068,7 +2849,6 @@ def visualize_attention_evolution_sparklines(
 
     plt.tight_layout()
 
-    # Save if requested
     if save_path:
         plt.savefig(save_path, bbox_inches="tight", dpi=300)
         print(f"Figure saved to {save_path}")
@@ -3523,7 +3303,6 @@ def visualize_attention_with_detected_regions(
         ax=ax,
         cmap=cmap,
         norm=norm,
-        gamma=gamma,
         vmax=vmax,
         vmin=vmin,
     )
@@ -3609,3 +3388,2612 @@ def rectangles_nearby(rect1, rect2, threshold):
 
     # Rectangles are nearby if both horizontal and vertical distances are within threshold
     return h_dist <= threshold and v_dist <= threshold
+
+
+DEFAULT_CLUSTER_METRICS = (
+    "concentration",
+    "entropy",
+    "variance",
+    "threshold_mass",
+    "top_percent_mass",
+    "low_range",
+    "long_range",
+)
+
+
+def _as_numpy_matrix(matrix):
+    if torch.is_tensor(matrix):
+        return matrix.detach().cpu().float().numpy()
+    return np.asarray(matrix, dtype=float)
+
+
+def _normalize_slice(slice_spec, length):
+    if slice_spec is None:
+        return slice(0, length)
+    if isinstance(slice_spec, slice):
+        return slice_spec
+    if isinstance(slice_spec, tuple):
+        return slice(*slice_spec)
+    return slice_spec
+
+
+def _metric_concentration(x, **kwargs):
+    return float(np.max(x))
+
+
+def _metric_entropy(x, eps=1e-12, **kwargs):
+    values = x.reshape(-1).astype(np.float64)
+    values = values / (values.sum() + eps)
+    return float(-np.sum(values * np.log(values + eps)))
+
+
+def _metric_variance(x, **kwargs):
+    return float(np.var(x))
+
+
+def _metric_threshold_mass(x, threshold=0.05, **kwargs):
+    return float(x[x >= threshold].sum())
+
+
+def _metric_top_percent_mass(x, top_percent=0.05, **kwargs):
+    values = x.reshape(-1)
+    k = max(1, int(len(values) * top_percent))
+    return float(np.sort(values)[-k:].sum())
+
+
+def _metric_low_range(
+    x,
+    query_start=0,
+    key_start=0,
+    max_distance=5,
+    **kwargs,
+):
+    mass = 0.0
+    for row in range(x.shape[0]):
+        query_pos = query_start + row
+        for col in range(x.shape[1]):
+            key_pos = key_start + col
+            if abs(query_pos - key_pos) <= max_distance:
+                mass += x[row, col]
+    return float(mass)
+
+
+def _metric_long_range(
+    x,
+    query_start=0,
+    key_start=0,
+    min_distance=20,
+    **kwargs,
+):
+    mass = 0.0
+    for row in range(x.shape[0]):
+        query_pos = query_start + row
+        for col in range(x.shape[1]):
+            key_pos = key_start + col
+            if abs(query_pos - key_pos) >= min_distance:
+                mass += x[row, col]
+    return float(mass)
+
+
+_CLUSTER_METRIC_REGISTRY = {
+    "concentration": _metric_concentration,
+    "entropy": _metric_entropy,
+    "variance": _metric_variance,
+    "threshold_mass": _metric_threshold_mass,
+    "top_percent_mass": _metric_top_percent_mass,
+    "low_range": _metric_low_range,
+    "long_range": _metric_long_range,
+}
+
+
+def _score_entropy(sub, eps=1e-12, **kwargs):
+    if sub.size == 0:
+        return 0.0
+    values = sub.reshape(-1).astype(np.float64)
+    total = values.sum()
+    if total == 0:
+        return 0.0
+    values = (values + eps) / (total + eps * len(values))
+    entropy = -np.sum(values * np.log(values))
+    entropy = entropy / np.log(len(values))
+    return float(1.0 - entropy)
+
+
+def _score_variance(sub, **kwargs):
+    if sub.size == 0:
+        return 0.0
+    return float(np.var(sub))
+
+
+def _score_threshold_count(sub, threshold=0.05, normalize=True, **kwargs):
+    if sub.size == 0:
+        return 0.0
+    count = np.sum(sub >= threshold)
+    if normalize:
+        return float(count / sub.size)
+    return float(count)
+
+
+def _score_threshold_mass(sub, threshold=0.05, **kwargs):
+    if sub.size == 0:
+        return 0.0
+    total = np.sum(sub)
+    if total == 0:
+        return 0.0
+    return float(np.sum(sub[sub >= threshold]) / total)
+
+
+def _score_top_percent_mass(sub, top_percent=0.05, **kwargs):
+    if sub.size == 0:
+        return 0.0
+    values = sub.reshape(-1).astype(np.float64)
+    total = values.sum()
+    if total == 0:
+        return 0.0
+    k = max(1, int(len(values) * top_percent))
+    return float(np.sort(values)[-k:].sum() / total)
+
+
+def _score_low_range(
+    sub,
+    query_start=0,
+    key_start=0,
+    max_distance=5,
+    **kwargs,
+):
+    if sub.size == 0:
+        return 0.0
+    score = 0.0
+    total = 0.0
+    for row in range(sub.shape[0]):
+        query_pos = query_start + row
+        for col in range(sub.shape[1]):
+            key_pos = key_start + col
+            distance = query_pos - key_pos
+            value = sub[row, col]
+            if 0 <= distance <= max_distance:
+                score += value
+            total += value
+    if total == 0:
+        return 0.0
+    return float(score / total)
+
+
+def _score_long_range(
+    sub,
+    query_start=0,
+    key_start=0,
+    min_distance=20,
+    **kwargs,
+):
+    if sub.size == 0:
+        return 0.0
+    score = 0.0
+    total = 0.0
+    for row in range(sub.shape[0]):
+        query_pos = query_start + row
+        for col in range(sub.shape[1]):
+            key_pos = key_start + col
+            distance = query_pos - key_pos
+            value = sub[row, col]
+            if distance >= min_distance:
+                score += value
+            total += value
+    if total == 0:
+        return 0.0
+    return float(score / total)
+
+
+_METRIC_SELECTION_REGISTRY = {
+    "entropy": _score_entropy,
+    "variance": _score_variance,
+    "threshold_count": _score_threshold_count,
+    "threshold_mass": _score_threshold_mass,
+    "top_percent_mass": _score_top_percent_mass,
+    "low_range": _score_low_range,
+    "long_range": _score_long_range,
+}
+
+
+def _add_metric_overview_annotations(
+    fig,
+    axes,
+    importance,
+    top_indices,
+    metric_name,
+    ignore_first_n,
+    rank_badge=True,
+    score_bars=True,
+):
+    layer_score = importance.mean(axis=1)
+    head_score = importance.mean(axis=0)
+    max_layer_score = max(float(layer_score.max()), 1e-12)
+    max_head_score = max(float(head_score.max()), 1e-12)
+
+    rank_map = {
+        (int(layer), int(head)): rank
+        for rank, (layer, head) in enumerate(top_indices, start=1)
+    }
+
+    if score_bars:
+        num_layers, num_heads = axes.shape
+        for head in range(num_heads):
+            pos = axes[0, head].get_position()
+            bar_height = min(0.018, pos.height * 0.25)
+            y0 = min(pos.y1 + 0.004, 0.985 - bar_height)
+            ax_bar = fig.add_axes([pos.x0, y0, pos.width, bar_height])
+            ax_bar.bar([0], [head_score[head]], color="#6A0DAD")
+            ax_bar.set_ylim(0, max_head_score * 1.05)
+            ax_bar.set_xticks([])
+            ax_bar.set_yticks([])
+            ax_bar.set_title(f"H{head}", fontsize=7, pad=1)
+            for spine in ax_bar.spines.values():
+                spine.set_visible(False)
+
+        for layer in range(num_layers):
+            pos = axes[layer, 0].get_position()
+            bar_width = min(0.026, pos.width * 0.35)
+            x0 = max(pos.x0 - bar_width - 0.006, 0.005)
+            ax_bar = fig.add_axes([x0, pos.y0, bar_width, pos.height])
+            ax_bar.barh([0], [layer_score[layer]], color="#6A0DAD")
+            ax_bar.set_xlim(0, max_layer_score * 1.05)
+            ax_bar.set_xticks([])
+            ax_bar.set_yticks([])
+            ax_bar.set_ylabel(f"L{layer}", fontsize=7, rotation=0, labelpad=8)
+            for spine in ax_bar.spines.values():
+                spine.set_visible(False)
+
+    if rank_badge:
+        for (layer, head), rank in rank_map.items():
+            ax = axes[layer, head]
+            for spine in ax.spines.values():
+                spine.set_edgecolor("red")
+                spine.set_linewidth(2.0)
+            ax.annotate(
+                str(rank),
+                xy=(1.0, 1.0),
+                xycoords="axes fraction",
+                xytext=(5, 5),
+                textcoords="offset points",
+                ha="left",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
+                color="white",
+                bbox=dict(
+                    boxstyle="circle,pad=0.35",
+                    facecolor="red",
+                    edgecolor="white",
+                    linewidth=0.8,
+                    alpha=0.95,
+                ),
+                clip_on=False,
+                zorder=20,
+            )
+
+    lines = [
+        f"Top heads by {metric_name}",
+        f"Scoring ignores first {ignore_first_n} key column(s)",
+    ]
+    for rank, (layer, head) in enumerate(top_indices, start=1):
+        lines.append(f"{rank:02d}. L{int(layer)} H{int(head)}  {importance[layer, head]:.6f}")
+    fig.text(
+        0.01,
+        0.01,
+        "\n".join(lines),
+        ha="left",
+        va="bottom",
+        fontsize=8,
+        bbox=dict(facecolor="white", alpha=0.75, edgecolor="none"),
+    )
+
+
+def _compress_axis_for_metric_overview(matrix, axis, important_indices):
+    important_indices = set(int(idx) for idx in important_indices)
+    axis_len = matrix.shape[axis]
+    pieces = []
+    index = 0
+
+    while index < axis_len:
+        if index in important_indices:
+            slc = [slice(None)] * matrix.ndim
+            slc[axis] = slice(index, index + 1)
+            pieces.append(matrix[tuple(slc)])
+            index += 1
+            continue
+
+        start = index
+        while index < axis_len and index not in important_indices:
+            index += 1
+        slc = [slice(None)] * matrix.ndim
+        slc[axis] = slice(start, index)
+        pieces.append(matrix[tuple(slc)].mean(axis=axis, keepdims=True))
+
+    return np.concatenate(pieces, axis=axis)
+
+
+def _compress_matrix_for_metric_overview(matrix, top_n):
+    top_cells = find_top_cells(matrix, top_n)
+    important_rows = {row for row, _ in top_cells}
+    important_cols = {col for _, col in top_cells}
+    compressed = _compress_axis_for_metric_overview(matrix, 0, important_rows)
+    compressed = _compress_axis_for_metric_overview(compressed, 1, important_cols)
+    return compressed
+
+
+def _short_token_for_overview(token, max_chars=10):
+    token = str(token)
+    token = token.replace("\n", "\\n")
+    if len(token) <= max_chars:
+        return token
+    return token[: max_chars - 1] + "."
+
+
+def _build_compressed_axis_for_cluster_overview(
+    matrix,
+    axis,
+    important_indices,
+    labels=None,
+    label_mode="index",
+    important_label_mode=None,
+):
+    important_indices = set(int(idx) for idx in important_indices)
+    axis_len = matrix.shape[axis]
+    pieces = []
+    compressed_labels = []
+    compressed_is_important = []
+    index = 0
+
+    while index < axis_len:
+        if index in important_indices:
+            slc = [slice(None)] * matrix.ndim
+            slc[axis] = slice(index, index + 1)
+            pieces.append(matrix[tuple(slc)])
+            current_label_mode = important_label_mode or label_mode
+            if current_label_mode == "index" or labels is None:
+                compressed_labels.append(str(index))
+            else:
+                compressed_labels.append(f"{index}:{_short_token_for_overview(labels[index])}")
+            compressed_is_important.append(True)
+            index += 1
+            continue
+
+        start = index
+        while index < axis_len and index not in important_indices:
+            index += 1
+        slc = [slice(None)] * matrix.ndim
+        slc[axis] = slice(start, index)
+        pieces.append(matrix[tuple(slc)].mean(axis=axis, keepdims=True))
+        end = index - 1
+        compressed_labels.append(str(start) if start == end else f"{start}-{end}")
+        compressed_is_important.append(False)
+
+    return np.concatenate(pieces, axis=axis), compressed_labels, compressed_is_important
+
+
+def _compress_matrix_for_cluster_overview(
+    matrix,
+    top_n,
+    x_labels=None,
+    y_labels=None,
+    label_mode="index",
+    important_label_mode=None,
+):
+    top_cells = find_top_cells(matrix, top_n)
+    important_rows = {row for row, _ in top_cells}
+    important_cols = {col for _, col in top_cells}
+    compressed, y_tick_labels, y_is_important = _build_compressed_axis_for_cluster_overview(
+        matrix,
+        0,
+        important_rows,
+        y_labels,
+        label_mode=label_mode,
+        important_label_mode=important_label_mode,
+    )
+    compressed, x_tick_labels, x_is_important = _build_compressed_axis_for_cluster_overview(
+        compressed,
+        1,
+        important_cols,
+        x_labels,
+        label_mode=label_mode,
+        important_label_mode=important_label_mode,
+    )
+    return compressed, x_tick_labels, y_tick_labels, x_is_important, y_is_important
+
+
+def _save_metric_fast_overview(
+    path,
+    display_array,
+    importance,
+    top_indices,
+    metric_name,
+    ignore_first_n,
+    title,
+    figsize=None,
+    merge_virtual_tokens=False,
+    x_labels=None,
+    y_labels=None,
+    overview_top_n=3,
+    cmap=THEME_CMAP,
+    highlight_top_cells=True,
+    highlight_top_n=None,
+    highlight_ranked_only=False,
+    highlight_color="#f8bbd0",
+    highlight_edgecolor="#F06292",
+    highlight_alpha=0.35,
+    show_merge_token_labels=False,
+    merge_token_labels_ranked_only=False,
+    merge_token_label_mode="index",
+    merge_token_important_label_mode=None,
+    merge_token_label_fontsize=3,
+    merge_token_highlight_color="#f8bbd0",
+    merge_token_highlight_edgecolor="#F06292",
+    merge_token_highlight_alpha=0.7,
+    shared_cbar=True,
+    shared_cbar_label="Attention Score",
+    wspace=0.08,
+    hspace=0.12,
+    close_after_save=True,
+):
+    num_layers, num_heads, _, _ = display_array.shape
+    layer_score = importance.mean(axis=1)
+    head_score = importance.mean(axis=0)
+    max_layer_score = max(float(layer_score.max()), 1e-12)
+    max_head_score = max(float(head_score.max()), 1e-12)
+    global_vmax = float(display_array.max())
+    if np.isclose(global_vmax, 0):
+        global_vmax = 1e-9
+
+    if figsize is None:
+        figsize = (max(2.0 * num_heads + 3.5, 8), max(1.1 * num_layers, 8))
+
+    rank_map = {
+        (int(layer), int(head)): rank
+        for rank, (layer, head) in enumerate(top_indices, start=1)
+    }
+
+    fig = plt.figure(figsize=figsize)
+    width_ratios = [0.7] + [1.0] * num_heads
+    if shared_cbar:
+        width_ratios.append(0.16)
+    width_ratios.append(2.4)
+    gs = GridSpec(
+        num_layers + 1,
+        len(width_ratios),
+        figure=fig,
+        width_ratios=width_ratios,
+        height_ratios=[0.55] + [1.0] * num_layers,
+        wspace=wspace,
+        hspace=hspace,
+    )
+
+    ax = fig.add_subplot(gs[0, 0])
+    ax.axis("off")
+
+    for head in range(num_heads):
+        ax = fig.add_subplot(gs[0, head + 1])
+        ax.bar([0], [head_score[head]], color="#6A0DAD")
+        ax.set_ylim(0, max_head_score * 1.05)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"H{head}", fontsize=8, pad=1)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+    for layer in range(num_layers):
+        ax = fig.add_subplot(gs[layer + 1, 0])
+        ax.barh([0], [layer_score[layer]], color="#6A0DAD")
+        ax.set_xlim(0, max_layer_score * 1.05)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_ylabel(f"L{layer}", fontsize=7, rotation=0, labelpad=10)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+    image = None
+    for layer in range(num_layers):
+        for head in range(num_heads):
+            ax = fig.add_subplot(gs[layer + 1, head + 1])
+            matrix = display_array[layer, head]
+            if merge_virtual_tokens:
+                (
+                    matrix,
+                    x_tick_labels,
+                    y_tick_labels,
+                    x_is_important,
+                    y_is_important,
+                ) = _compress_matrix_for_cluster_overview(
+                    matrix,
+                    overview_top_n,
+                    x_labels=x_labels,
+                    y_labels=y_labels,
+                    label_mode=merge_token_label_mode,
+                    important_label_mode=merge_token_important_label_mode,
+                )
+            image = ax.imshow(matrix, aspect="auto", vmin=0, vmax=global_vmax, cmap=cmap)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(f"L{layer}H{head}", fontsize=5, pad=1)
+
+            for spine in ax.spines.values():
+                spine.set_linewidth(0.3)
+
+            rank = rank_map.get((layer, head))
+            if (
+                merge_virtual_tokens
+                and show_merge_token_labels
+                and (not merge_token_labels_ranked_only or rank is not None)
+            ):
+                ax.set_xticks(np.arange(matrix.shape[1]))
+                ax.set_xticklabels(
+                    x_tick_labels,
+                    rotation=90,
+                    fontsize=merge_token_label_fontsize,
+                )
+                ax.set_yticks(np.arange(matrix.shape[0]))
+                ax.set_yticklabels(
+                    y_tick_labels,
+                    fontsize=merge_token_label_fontsize,
+                )
+                for tick_label, is_important in zip(ax.get_xticklabels(), x_is_important):
+                    if is_important:
+                        tick_label.set_bbox(
+                            dict(
+                                facecolor=merge_token_highlight_color,
+                                edgecolor=merge_token_highlight_edgecolor,
+                                boxstyle="round,pad=0.15",
+                                alpha=merge_token_highlight_alpha,
+                            )
+                        )
+                for tick_label, is_important in zip(ax.get_yticklabels(), y_is_important):
+                    if is_important:
+                        tick_label.set_bbox(
+                            dict(
+                                facecolor=merge_token_highlight_color,
+                                edgecolor=merge_token_highlight_edgecolor,
+                                boxstyle="round,pad=0.15",
+                                alpha=merge_token_highlight_alpha,
+                            )
+                        )
+                ax.tick_params(axis="both", length=1, pad=1)
+
+            should_highlight_cells = highlight_top_cells and (
+                not highlight_ranked_only or rank is not None
+            )
+            if should_highlight_cells:
+                n_cells = highlight_top_n if highlight_top_n is not None else overview_top_n
+                for row, col in find_top_cells(matrix, min(n_cells, matrix.size)):
+                    rect = patches.Rectangle(
+                        (col - 0.5, row - 0.5),
+                        1,
+                        1,
+                        linewidth=1.2,
+                        edgecolor=highlight_edgecolor,
+                        facecolor=highlight_color,
+                        alpha=highlight_alpha,
+                        zorder=12,
+                    )
+                    ax.add_patch(rect)
+
+            if rank is not None:
+                for spine in ax.spines.values():
+                    spine.set_edgecolor("red")
+                    spine.set_linewidth(2.0)
+                ax.annotate(
+                    str(rank),
+                    xy=(1.0, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(5, 5),
+                    textcoords="offset points",
+                    ha="left",
+                    va="bottom",
+                    fontsize=8,
+                    fontweight="bold",
+                    color="white",
+                    bbox=dict(
+                        boxstyle="circle,pad=0.35",
+                        facecolor="red",
+                        edgecolor="white",
+                        linewidth=0.8,
+                        alpha=0.95,
+                    ),
+                    clip_on=False,
+                    zorder=20,
+                )
+
+    if shared_cbar and image is not None:
+        cbar_ax = fig.add_subplot(gs[1:, -2])
+        cbar = fig.colorbar(image, cax=cbar_ax)
+        cbar.outline.set_visible(False)
+        if shared_cbar_label:
+            cbar.set_label(shared_cbar_label, rotation=90)
+
+    ax_text = fig.add_subplot(gs[1:, -1])
+    ax_text.axis("off")
+    lines = [
+        f"Top heads by\n{metric_name} importance\n",
+        f"Scoring ignores first {ignore_first_n} key column(s)",
+        f"Overview: {'merged virtual tokens' if merge_virtual_tokens else 'full tokens'}",
+        "",
+    ]
+    for rank, (layer, head) in enumerate(top_indices, start=1):
+        lines.append(f"{rank:02d}. L{int(layer)} H{int(head)}  {importance[layer, head]:.6f}")
+    ax_text.text(0, 1, "\n".join(lines), va="top", ha="left", fontsize=10)
+
+    fig.suptitle(title, fontsize=18, fontname="DejaVu Serif", fontweight="bold")
+    fig.subplots_adjust(
+        left=0.035,
+        right=0.985,
+        bottom=0.035,
+        top=0.945,
+        wspace=wspace,
+        hspace=hspace,
+    )
+
+    if path is not None:
+        fig.savefig(path, bbox_inches="tight")
+        if close_after_save:
+            plt.close(fig)
+    return fig
+
+
+def _robust_scale_features(features):
+    median = np.median(features, axis=0)
+    q1 = np.percentile(features, 25, axis=0)
+    q3 = np.percentile(features, 75, axis=0)
+    iqr = q3 - q1
+    iqr[iqr == 0] = 1.0
+    return (features - median) / iqr
+
+
+def _standard_scale_features(features):
+    mean = features.mean(axis=0)
+    std = features.std(axis=0)
+    std[std == 0] = 1.0
+    return (features - mean) / std
+
+
+def _pca_2d(features):
+    centered = features - features.mean(axis=0, keepdims=True)
+    u, s, _ = np.linalg.svd(centered, full_matrices=False)
+    if u.shape[1] == 1:
+        return np.column_stack([u[:, 0] * s[0], np.zeros(u.shape[0])])
+    return u[:, :2] * s[:2]
+
+
+def _pairwise_distances(x):
+    diff = x[:, None, :] - x[None, :, :]
+    return np.sqrt(np.sum(diff * diff, axis=2))
+
+
+def _cluster_features(features, n_clusters=5, method="ward"):
+    method = method.lower()
+    if method != "ward":
+        raise ValueError("Only method='ward' is currently supported.")
+
+    try:
+        from scipy.cluster.hierarchy import fcluster, linkage
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "cluster_attention_heads(method='ward') requires scipy. "
+            "Install scipy or add it to the IzzyViz environment."
+        ) from exc
+
+    z = linkage(features, method="ward")
+    raw_labels = fcluster(z, t=n_clusters, criterion="maxclust")
+    unique = sorted(np.unique(raw_labels))
+    remap = {old: new for new, old in enumerate(unique)}
+    return np.array([remap[value] for value in raw_labels], dtype=int)
+
+
+def _select_representatives(features, labels, n_clusters, per_cluster=1):
+    representatives = []
+    for cluster_id in range(n_clusters):
+        indices = np.where(labels == cluster_id)[0]
+        if len(indices) == 0:
+            continue
+        cluster_features = features[indices]
+        distances = _pairwise_distances(cluster_features)
+        order = np.argsort(distances.sum(axis=1))
+        for local_idx in order[:per_cluster]:
+            representatives.append(int(indices[local_idx]))
+    return representatives
+
+
+def _save_cluster_pca(path, features, labels, representatives, head_infos, n_clusters, title):
+    coords = _pca_2d(features)
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    for cluster_id in range(n_clusters):
+        indices = np.where(labels == cluster_id)[0]
+        ax.scatter(
+            coords[indices, 0],
+            coords[indices, 1],
+            label=f"C{cluster_id} n={len(indices)}",
+            alpha=0.75,
+        )
+
+    for idx in representatives:
+        layer, head = head_infos[idx]
+        ax.scatter(coords[idx, 0], coords[idx, 1], marker="*", s=250, edgecolors="black")
+        ax.text(coords[idx, 0], coords[idx, 1], f"L{layer}H{head}", fontsize=9)
+
+    ax.set_xlabel("PCA 1")
+    ax.set_ylabel("PCA 2")
+    ax.set_title(title)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _save_cluster_overview(
+    path,
+    submatrices,
+    labels,
+    representatives,
+    head_infos,
+    metric_names,
+    n_clusters,
+    title,
+    figsize=None,
+    merge_virtual_tokens=False,
+    x_labels=None,
+    y_labels=None,
+    overview_top_n=3,
+    cmap=THEME_CMAP,
+    shared_cbar=True,
+    shared_cbar_label="Attention Score",
+    show_merge_token_labels=False,
+    merge_token_labels_representatives_only=True,
+    merge_token_label_fontsize=4,
+    merge_token_label_mode="index",
+    merge_token_important_label_mode=None,
+    merge_token_highlight_color="#f8bbd0",
+    merge_token_highlight_edgecolor="#F06292",
+    merge_token_highlight_alpha=0.65,
+    wspace=0.08,
+    hspace=0.12,
+):
+    rows = len(submatrices)
+    cols = len(submatrices[0])
+    global_vmax = max(np.max(sub) for layer_subs in submatrices for sub in layer_subs)
+    if np.isclose(global_vmax, 0):
+        global_vmax = 1e-9
+
+    if figsize is None:
+        figsize = (max(2.0 * cols + 3.5, 8), max(1.1 * rows, 8))
+
+    fig = plt.figure(figsize=figsize)
+    gs = GridSpec(
+        rows + 1,
+        cols + 3,
+        figure=fig,
+        width_ratios=[0.7] + [1.0] * cols + [0.16, 2.4],
+        height_ratios=[0.55] + [1.0] * rows,
+        wspace=wspace,
+        hspace=hspace,
+    )
+
+    ax = fig.add_subplot(gs[0, 0])
+    ax.axis("off")
+
+    for head in range(cols):
+        ax = fig.add_subplot(gs[0, head + 1])
+        ax.axis("off")
+        ax.text(0.5, 0.5, f"H{head}", ha="center", va="center", fontsize=8, fontweight="bold")
+
+    for layer in range(rows):
+        ax = fig.add_subplot(gs[layer + 1, 0])
+        ax.axis("off")
+        ax.text(0.5, 0.5, f"L{layer}", ha="center", va="center", fontsize=7, fontweight="bold")
+
+    representative_set = set(representatives)
+    representative_rank = {idx: rank for rank, idx in enumerate(representatives, start=1)}
+    image = None
+    for layer in range(rows):
+        for head in range(cols):
+            ax = fig.add_subplot(gs[layer + 1, head + 1])
+            sub = submatrices[layer][head]
+            if merge_virtual_tokens:
+                (
+                    sub,
+                    x_tick_labels,
+                    y_tick_labels,
+                    x_is_important,
+                    y_is_important,
+                ) = _compress_matrix_for_cluster_overview(
+                    sub,
+                    overview_top_n,
+                    x_labels=x_labels,
+                    y_labels=y_labels,
+                    label_mode=merge_token_label_mode,
+                    important_label_mode=merge_token_important_label_mode,
+                )
+            image = ax.imshow(sub, aspect="auto", vmin=0, vmax=global_vmax, cmap=cmap)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(f"L{layer}H{head}", fontsize=5, pad=1)
+
+            idx = layer * cols + head
+            cluster_id = labels[idx]
+            if (
+                merge_virtual_tokens
+                and show_merge_token_labels
+                and (not merge_token_labels_representatives_only or idx in representative_set)
+            ):
+                ax.set_xticks(np.arange(sub.shape[1]))
+                ax.set_xticklabels(
+                    x_tick_labels,
+                    rotation=90,
+                    fontsize=merge_token_label_fontsize,
+                )
+                ax.set_yticks(np.arange(sub.shape[0]))
+                ax.set_yticklabels(
+                    y_tick_labels,
+                    fontsize=merge_token_label_fontsize,
+                )
+                for tick_label, is_important in zip(ax.get_xticklabels(), x_is_important):
+                    if is_important:
+                        tick_label.set_bbox(
+                            dict(
+                                facecolor=merge_token_highlight_color,
+                                edgecolor=merge_token_highlight_edgecolor,
+                                boxstyle="round,pad=0.15",
+                                alpha=merge_token_highlight_alpha,
+                            )
+                        )
+                for tick_label, is_important in zip(ax.get_yticklabels(), y_is_important):
+                    if is_important:
+                        tick_label.set_bbox(
+                            dict(
+                                facecolor=merge_token_highlight_color,
+                                edgecolor=merge_token_highlight_edgecolor,
+                                boxstyle="round,pad=0.15",
+                                alpha=merge_token_highlight_alpha,
+                            )
+                        )
+                ax.tick_params(axis="both", length=1, pad=1)
+            if idx in representative_set:
+                for spine in ax.spines.values():
+                    spine.set_edgecolor(THEME_NEGATIVE)
+                    spine.set_linewidth(2.4)
+                ax.annotate(
+                    f"REP {representative_rank[idx]}\nC{cluster_id} L{layer}H{head}",
+                    xy=(1.0, 1.0),
+                    xycoords="axes fraction",
+                    xytext=(5, 5),
+                    textcoords="offset points",
+                    ha="left",
+                    va="bottom",
+                    fontsize=7,
+                    fontweight="bold",
+                    color="white",
+                    bbox=dict(
+                        facecolor=THEME_NEGATIVE,
+                        alpha=0.95,
+                        edgecolor="white",
+                        linewidth=0.8,
+                        boxstyle="round,pad=0.25",
+                    ),
+                    clip_on=False,
+                    zorder=20,
+                )
+            ax.text(
+                0.03,
+                0.95,
+                f"C{cluster_id}",
+                transform=ax.transAxes,
+                ha="left",
+                va="top",
+                fontsize=7,
+                color="white",
+                bbox=dict(facecolor="black", alpha=0.6, edgecolor="none", boxstyle="round,pad=0.15"),
+            )
+
+    if shared_cbar and image is not None:
+        cbar_ax = fig.add_subplot(gs[1:, -2])
+        cbar = fig.colorbar(image, cax=cbar_ax)
+        cbar.outline.set_visible(False)
+        if shared_cbar_label:
+            cbar.set_label(shared_cbar_label, rotation=90)
+
+    ax_text = fig.add_subplot(gs[1:, -1])
+    ax_text.axis("off")
+    lines = [
+        "Head clustering summary",
+        f"Clusters: {n_clusters}",
+        "",
+        "Representatives:",
+    ]
+    for idx in representatives:
+        layer, head = head_infos[idx]
+        lines.append(f"  C{labels[idx]}: L{layer} H{head}")
+    lines.append("")
+    lines.append("Metrics:")
+    for metric_name in metric_names:
+        lines.append(f"  - {metric_name}")
+
+    ax_text.text(0, 1, "\n".join(lines), va="top", ha="left", fontsize=10)
+    fig.suptitle(title, fontsize=18)
+    fig.subplots_adjust(
+        left=0.035,
+        right=0.985,
+        bottom=0.035,
+        top=0.945,
+        wspace=wspace,
+        hspace=hspace,
+    )
+    fig.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
+
+def cluster_attention_heads(
+    attentions,
+    query_slice=None,
+    key_slice=None,
+    tokens=None,
+    x_labels=None,
+    y_labels=None,
+    metrics=DEFAULT_CLUSTER_METRICS,
+    metric_params=None,
+    n_clusters=5,
+    scale="robust",
+    clustering_method="ward",
+    representative_per_cluster=1,
+    ignore_first_n=0,
+    max_detail_plots=None,
+    output_dir=None,
+    run_name="attention_head_clustering",
+    plot_overview=None,
+    plot_pca=None,
+    plot_detail_heatmaps=None,
+    save_overview=True,
+    save_pca=True,
+    save_detail_heatmaps=True,
+    detail_top_n=20,
+    detail_merge_virtual_tokens=True,
+    detail_kwargs=None,
+    overview_renderer="fast",
+    overview_merge_virtual_tokens=False,
+    plot_overview_no_merge=True,
+    plot_overview_merge=False,
+    overview_top_n=3,
+    overview_kwargs=None,
+    overview_title=None,
+    pca_title=None,
+    output_prefix=None,
+    overview_file_format="png",
+    pca_file_format="png",
+    detail_file_format="pdf",
+    save_summary=True,
+):
+    """
+    Cluster transformer attention heads by configurable attention metrics.
+
+    Parameters
+    ----------
+    attentions : sequence
+        A sequence of layer attention tensors/arrays shaped
+        ``[batch, heads, query, key]`` or ``[heads, query, key]``.
+    query_slice, key_slice : slice | tuple | index array | None
+        Region to cluster and display. For QA attention, ``query_slice`` is
+        usually the answer-token range and ``key_slice`` is the
+        context/question-token range.
+    tokens, x_labels, y_labels : list[str] | None
+        Axis labels for detail heatmaps. If ``x_labels`` or ``y_labels`` are not
+        provided and ``tokens`` is provided, labels are sliced from ``tokens``.
+    metrics : sequence[str | callable]
+        Metrics used as clustering features. Built-ins are:
+        ``concentration``, ``entropy``, ``variance``, ``threshold_mass``,
+        ``top_percent_mass``, ``low_range``, and ``long_range``.
+        A callable metric receives ``metric(matrix, **params)``.
+    metric_params : dict | None
+        Per-metric parameters, for example
+        ``{"threshold_mass": {"threshold": 0.03},
+        "top_percent_mass": {"top_percent": 0.1}}``.
+    n_clusters : int
+        Number of head clusters.
+    scale : {"robust", "standard", None}
+        Feature scaling before clustering.
+    clustering_method : str
+        Currently supports ``"ward"``.
+    representative_per_cluster : int
+        Number of medoid representatives selected per cluster.
+    ignore_first_n : int
+        Number of leading key columns inside ``key_slice`` to ignore for
+        clustering features only. Displayed heatmaps still use the full
+        ``key_slice``. Set this to 1 to match the original RAG notebook.
+    max_detail_plots : int | None
+        Maximum number of representative attention heatmaps to draw. Defaults
+        to all selected representatives.
+    output_dir : str | Path | None
+        If provided, saves plots and ``run_summary.json`` in this directory.
+    run_name : str
+        Prefix/title used for saved outputs.
+    plot_overview, plot_pca, plot_detail_heatmaps : bool | None
+        Control whether to create the overview, PCA, and representative
+        clustering heatmap figures. If None, the corresponding ``save_*``
+        compatibility parameter is used.
+    save_overview, save_pca, save_detail_heatmaps : bool
+        Backward-compatible aliases for ``plot_*``. Prefer the ``plot_*``
+        parameters in new code.
+    detail_top_n : int
+        Number of top cells highlighted in each detail heatmap.
+    detail_merge_virtual_tokens : bool
+        Passed to ``visualize_attention_matrix`` as ``merge_virtual_tokens``.
+    detail_kwargs : dict | None
+        Extra keyword arguments passed to ``visualize_attention_matrix``.
+    overview_renderer : {"fast", "izzyviz"}
+        ``"fast"`` uses a lightweight thumbnail overview. ``"izzyviz"`` calls
+        ``visualize_attention_overview`` and is slower for large grids.
+    overview_merge_virtual_tokens : bool
+        Merge non-top rows/columns in the overview when using the fast renderer.
+    plot_overview_no_merge, plot_overview_merge : bool
+        When using the fast renderer, save non-merged and merged overview
+        variants. ``overview.png`` is kept as a compatibility alias for the
+        non-merged overview when it is requested.
+    overview_top_n : int
+        Top cells used to preserve rows/columns when the fast overview merges
+        virtual tokens.
+    overview_kwargs : dict | None
+        Extra keyword arguments for the overview renderer.
+
+    Returns
+    -------
+    dict
+        ``features``, ``features_scaled``, ``labels``, ``representatives``,
+        ``head_infos``, ``submatrices``, and output paths.
+    """
+    if not attentions:
+        raise ValueError("attentions must contain at least one layer.")
+
+    metric_params = metric_params or {}
+    detail_kwargs = dict(detail_kwargs or {})
+    overview_kwargs = dict(overview_kwargs or {})
+    output_prefix = "" if output_prefix is None else str(output_prefix)
+    overview_file_format = str(overview_file_format).lstrip(".")
+    pca_file_format = str(pca_file_format).lstrip(".")
+    detail_file_format = str(detail_file_format).lstrip(".")
+    overview_renderer = overview_renderer.lower()
+    if overview_renderer not in {"fast", "izzyviz"}:
+        raise ValueError("overview_renderer must be 'fast' or 'izzyviz'.")
+    if plot_overview is None:
+        plot_overview = save_overview
+    if plot_pca is None:
+        plot_pca = save_pca
+    if plot_detail_heatmaps is None:
+        plot_detail_heatmaps = save_detail_heatmaps
+
+    first = attentions[0]
+    if torch.is_tensor(first):
+        first_shape = tuple(first.shape)
+    else:
+        first_shape = np.asarray(first).shape
+    if len(first_shape) == 4:
+        num_heads = first_shape[1]
+        query_len = first_shape[2]
+        key_len = first_shape[3]
+    elif len(first_shape) == 3:
+        num_heads = first_shape[0]
+        query_len = first_shape[1]
+        key_len = first_shape[2]
+    else:
+        raise ValueError("Each attention layer must be [batch, heads, query, key] or [heads, query, key].")
+
+    q_slice = _normalize_slice(query_slice, query_len)
+    k_slice = _normalize_slice(key_slice, key_len)
+
+    if tokens is not None:
+        if x_labels is None:
+            x_labels = list(np.asarray(tokens, dtype=object)[k_slice])
+        if y_labels is None:
+            y_labels = list(np.asarray(tokens, dtype=object)[q_slice])
+
+    metric_names = []
+    metric_functions = []
+    for metric in metrics:
+        if callable(metric):
+            metric_names.append(getattr(metric, "__name__", "custom_metric"))
+            metric_functions.append(metric)
+        else:
+            if metric not in _CLUSTER_METRIC_REGISTRY:
+                raise ValueError(f"Unknown metric: {metric}")
+            metric_names.append(metric)
+            metric_functions.append(_CLUSTER_METRIC_REGISTRY[metric])
+
+    q_start = q_slice.start if isinstance(q_slice, slice) and q_slice.start is not None else 0
+    k_start = k_slice.start if isinstance(k_slice, slice) and k_slice.start is not None else 0
+    score_k_start = k_start + max(int(ignore_first_n), 0)
+
+    submatrices = []
+    features = []
+    head_infos = []
+
+    for layer_idx, layer_attention in enumerate(attentions):
+        layer_array = _as_numpy_matrix(layer_attention)
+        if layer_array.ndim == 4:
+            layer_array = layer_array[0]
+        layer_submatrices = []
+        for head_idx in range(num_heads):
+            sub_display = layer_array[head_idx][q_slice, k_slice]
+            sub_display = np.asarray(sub_display, dtype=float)
+            layer_submatrices.append(sub_display)
+            if ignore_first_n > 0:
+                sub_score = sub_display[:, int(ignore_first_n):]
+            else:
+                sub_score = sub_display
+
+            metric_values = []
+            for metric_name, metric_fn in zip(metric_names, metric_functions):
+                params = dict(metric_params.get(metric_name, {}))
+                params.setdefault("query_start", q_start)
+                params.setdefault("key_start", score_k_start)
+                metric_values.append(metric_fn(sub_score, **params))
+            features.append(metric_values)
+            head_infos.append((layer_idx, head_idx))
+        submatrices.append(layer_submatrices)
+
+    features = np.asarray(features, dtype=float)
+
+    if scale is None or scale == "none":
+        features_scaled = features.copy()
+    elif scale == "robust":
+        features_scaled = _robust_scale_features(features)
+    elif scale == "standard":
+        features_scaled = _standard_scale_features(features)
+    else:
+        raise ValueError("scale must be 'robust', 'standard', None, or 'none'.")
+
+    labels = _cluster_features(features_scaled, n_clusters=n_clusters, method=clustering_method)
+    representatives = _select_representatives(
+        features_scaled,
+        labels,
+        n_clusters=n_clusters,
+        per_cluster=representative_per_cluster,
+    )
+    if max_detail_plots is not None:
+        representatives = representatives[:max_detail_plots]
+
+    output_paths = {}
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if plot_pca:
+            pca_path = output_dir / f"{output_prefix}pca_scatter.{pca_file_format}"
+            _save_cluster_pca(
+                pca_path,
+                features_scaled,
+                labels,
+                representatives,
+                head_infos,
+                n_clusters,
+                pca_title or f"{run_name} PCA",
+            )
+            output_paths["pca"] = str(pca_path)
+
+        if plot_overview:
+            overview_title_value = overview_title or f"{run_name} overview"
+            if overview_renderer == "fast":
+                if plot_overview_no_merge:
+                    overview_no_merge_path = output_dir / f"{output_prefix}overview_no_merge.{overview_file_format}"
+                    _save_cluster_overview(
+                        overview_no_merge_path,
+                        submatrices,
+                        labels,
+                        representatives,
+                        head_infos,
+                        metric_names,
+                        n_clusters,
+                        overview_title_value,
+                        figsize=overview_kwargs.get("figsize"),
+                        merge_virtual_tokens=False,
+                        x_labels=x_labels,
+                        y_labels=y_labels,
+                        overview_top_n=overview_top_n,
+                        cmap=overview_kwargs.get("cmap", THEME_CMAP),
+                        shared_cbar=overview_kwargs.get("shared_cbar", True),
+                        shared_cbar_label=overview_kwargs.get("shared_cbar_label", "Attention Score"),
+                        show_merge_token_labels=overview_kwargs.get("show_merge_token_labels", False),
+                        merge_token_labels_representatives_only=overview_kwargs.get(
+                            "merge_token_labels_representatives_only",
+                            True,
+                        ),
+                        merge_token_label_fontsize=overview_kwargs.get("merge_token_label_fontsize", 4),
+                        merge_token_label_mode=overview_kwargs.get("merge_token_label_mode", "index"),
+                        merge_token_important_label_mode=overview_kwargs.get("merge_token_important_label_mode"),
+                        merge_token_highlight_color=overview_kwargs.get("merge_token_highlight_color", "#f8bbd0"),
+                        merge_token_highlight_edgecolor=overview_kwargs.get("merge_token_highlight_edgecolor", "#F06292"),
+                        merge_token_highlight_alpha=overview_kwargs.get("merge_token_highlight_alpha", 0.65),
+                        wspace=overview_kwargs.get("wspace", 0.08),
+                        hspace=overview_kwargs.get("hspace", 0.12),
+                    )
+                    output_paths["overview_no_merge"] = str(overview_no_merge_path)
+                    output_paths["overview"] = str(overview_no_merge_path)
+
+                if plot_overview_merge:
+                    overview_merge_path = output_dir / f"{output_prefix}overview_merge_tokens.{overview_file_format}"
+                    _save_cluster_overview(
+                        overview_merge_path,
+                        submatrices,
+                        labels,
+                        representatives,
+                        head_infos,
+                        metric_names,
+                        n_clusters,
+                        f"{overview_title_value} (merged virtual tokens)",
+                        figsize=overview_kwargs.get("figsize"),
+                        merge_virtual_tokens=True,
+                        x_labels=x_labels,
+                        y_labels=y_labels,
+                        overview_top_n=overview_top_n,
+                        cmap=overview_kwargs.get("cmap", THEME_CMAP),
+                        shared_cbar=overview_kwargs.get("shared_cbar", True),
+                        shared_cbar_label=overview_kwargs.get("shared_cbar_label", "Attention Score"),
+                        show_merge_token_labels=overview_kwargs.get("show_merge_token_labels", False),
+                        merge_token_labels_representatives_only=overview_kwargs.get(
+                            "merge_token_labels_representatives_only",
+                            True,
+                        ),
+                        merge_token_label_fontsize=overview_kwargs.get("merge_token_label_fontsize", 4),
+                        merge_token_label_mode=overview_kwargs.get("merge_token_label_mode", "index"),
+                        merge_token_important_label_mode=overview_kwargs.get("merge_token_important_label_mode"),
+                        merge_token_highlight_color=overview_kwargs.get("merge_token_highlight_color", "#f8bbd0"),
+                        merge_token_highlight_edgecolor=overview_kwargs.get("merge_token_highlight_edgecolor", "#F06292"),
+                        merge_token_highlight_alpha=overview_kwargs.get("merge_token_highlight_alpha", 0.65),
+                        wspace=overview_kwargs.get("wspace", 0.08),
+                        hspace=overview_kwargs.get("hspace", 0.12),
+                    )
+                    output_paths["overview_merge"] = str(overview_merge_path)
+            else:
+                overview_path = output_dir / f"{output_prefix}overview.{overview_file_format}"
+                overview_array = np.asarray(submatrices, dtype=float)
+                fig, axes = visualize_attention_overview(
+                    overview_array,
+                    title=overview_title_value,
+                    save_path=str(overview_path),
+                    merge_virtual_tokens=overview_merge_virtual_tokens,
+                    top_n=overview_top_n,
+                    close_after_save=True,
+                    **overview_kwargs,
+                )
+                output_paths["overview"] = str(overview_path)
+
+        if plot_detail_heatmaps:
+            detail_paths = []
+            detail_xlabel = detail_kwargs.pop("xlabel", "Tokens Attended To")
+            detail_ylabel = detail_kwargs.pop("ylabel", "Tokens Attending")
+            for idx in representatives:
+                layer_idx, head_idx = head_infos[idx]
+                cluster_id = int(labels[idx])
+                detail_path = output_dir / (
+                    f"{output_prefix}cluster_{cluster_id}_L{layer_idx}_H{head_idx}.{detail_file_format}"
+                )
+                visualize_attention_matrix(
+                    submatrices[layer_idx][head_idx],
+                    x_labels=x_labels,
+                    y_labels=y_labels,
+                    title=f"{run_name} | C{cluster_id} L{layer_idx} H{head_idx}",
+                    xlabel=detail_xlabel,
+                    ylabel=detail_ylabel,
+                    top_n=detail_top_n,
+                    merge_virtual_tokens=detail_merge_virtual_tokens,
+                    save_path=str(detail_path),
+                    close_after_save=True,
+                    **detail_kwargs,
+                )
+                detail_paths.append(str(detail_path))
+            output_paths["detail_heatmaps"] = detail_paths
+
+        if save_summary:
+            summary = {
+                "run_name": run_name,
+                "n_clusters": int(n_clusters),
+                "metrics": list(metric_names),
+                "metric_params": metric_params,
+                "scale": scale,
+                "clustering_method": clustering_method,
+                "plot_overview": bool(plot_overview),
+                "plot_pca": bool(plot_pca),
+                "plot_detail_heatmaps": bool(plot_detail_heatmaps),
+                "overview_renderer": overview_renderer,
+                "overview_merge_virtual_tokens": bool(overview_merge_virtual_tokens),
+                "overview_top_n": int(overview_top_n),
+                "representatives": [
+                    {
+                        "cluster": int(labels[idx]),
+                        "layer": int(head_infos[idx][0]),
+                        "head": int(head_infos[idx][1]),
+                    }
+                    for idx in representatives
+                ],
+                "cluster_sizes": {
+                    str(cluster_id): int(np.sum(labels == cluster_id))
+                    for cluster_id in range(n_clusters)
+                },
+                "ignore_first_n": int(ignore_first_n),
+                "plot_overview_no_merge": bool(plot_overview_no_merge),
+                "plot_overview_merge": bool(plot_overview_merge),
+            }
+            summary_path = output_dir / f"{output_prefix}run_summary.json"
+            with open(summary_path, "w", encoding="utf-8") as f:
+                json.dump(summary, f, indent=2)
+            output_paths["summary"] = str(summary_path)
+
+    return {
+        "features": features,
+        "features_scaled": features_scaled,
+        "feature_names": list(metric_names),
+        "labels": labels,
+        "representatives": representatives,
+        "head_infos": head_infos,
+        "submatrices": submatrices,
+        "output_paths": output_paths,
+    }
+
+
+def select_attention_heads_by_metric(
+    attentions,
+    query_slice=None,
+    key_slice=None,
+    tokens=None,
+    x_labels=None,
+    y_labels=None,
+    metric_name="entropy",
+    metric_params=None,
+    ignore_first_n=1,
+    top_k=10,
+    output_dir=None,
+    run_name=None,
+    plot_overview=True,
+    plot_overview_no_merge=True,
+    plot_overview_merge=True,
+    plot_importance_heatmap=True,
+    plot_top_attention_maps=True,
+    top_attention_count=None,
+    overview_renderer="fast",
+    overview_top_n=3,
+    overview_kwargs=None,
+    importance_cmap=THEME_CMAP,
+    detail_top_n=20,
+    detail_merge_virtual_tokens=True,
+    detail_file_format="pdf",
+    detail_kwargs=None,
+    close_after_save=True,
+    save_summary=True,
+):
+    """
+    Rank attention heads by one metric and optionally plot selected views.
+
+    This is intended for metric-based visual search: compute one score for each
+    layer/head, rank the heads, then optionally generate:
+    - an IzzyViz overview without virtual-token merging,
+    - an IzzyViz overview with virtual-token merging,
+    - a layer x head metric heatmap,
+    - top-k attention maps using ``visualize_attention_matrix``.
+
+    Overview figures keep the head-score bars above the grid and layer-score
+    bars to the left by adding small external axes around the IzzyViz overview;
+    top-k rank badges are placed just outside each ranked thumbnail so they do
+    not cover the attention pattern.
+
+    Parameters
+    ----------
+    attentions : sequence | array | tensor
+        Attention tensors accepted by ``visualize_attention_overview``.
+    query_slice, key_slice : slice | tuple | index array | None
+        Display region. For QA analysis, ``query_slice`` is usually the answer
+        token range and ``key_slice`` is the context/question token range.
+    tokens, x_labels, y_labels : list[str] | None
+        Labels for detail attention maps. If labels are omitted and ``tokens`` is
+        provided, labels are sliced from ``tokens``.
+    metric_name : str
+        One of ``entropy``, ``variance``, ``threshold_count``,
+        ``threshold_mass``, ``top_percent_mass``, ``low_range``, or
+        ``long_range``.
+    metric_params : dict | None
+        Metric-specific parameters, e.g. ``{"threshold": 0.05}``,
+        ``{"top_percent": 0.05}``, ``{"max_distance": 5}``, or
+        ``{"min_distance": 20}``.
+    ignore_first_n : int
+        Number of leading key columns to ignore during scoring only. Display
+        still uses the full ``key_slice``.
+    top_k : int
+        Number of heads to rank and label.
+    output_dir : str | Path | None
+        If provided, save all requested outputs there. If None, figures are
+        created and returned without saving.
+    plot_overview, plot_overview_no_merge, plot_overview_merge : bool
+        Overview switches. ``plot_overview=False`` disables both overview
+        variants.
+    plot_importance_heatmap : bool
+        Whether to plot the layer x head score heatmap.
+    plot_top_attention_maps : bool
+        Whether to plot attention maps for ranked heads.
+    top_attention_count : int | None
+        Number of ranked heads to draw as attention maps. Defaults to ``top_k``.
+    overview_renderer : {"fast", "izzyviz"}
+        ``"fast"`` uses a lightweight thumbnail grid with the same score bars
+        and rank labels. ``"izzyviz"`` calls ``visualize_attention_overview``
+        for every subplot and is much slower for large layer/head grids.
+    overview_top_n : int
+        ``top_n`` passed to ``visualize_attention_overview``.
+    overview_kwargs, detail_kwargs : dict | None
+        Extra arguments passed to ``visualize_attention_overview`` and
+        ``visualize_attention_matrix``.
+        Fast overview also accepts highlight options:
+        ``highlight_top_cells`` (default True), ``highlight_top_n``,
+        ``highlight_ranked_only_no_merge`` (default True),
+        ``highlight_ranked_only_merge`` (default False),
+        ``highlight_color``, ``highlight_edgecolor``, and ``highlight_alpha``.
+    detail_file_format : str
+        File extension for saved top attention maps, for example ``"pdf"`` for
+        publication export or ``"png"`` for inline notebook display. Defaults
+        to ``"pdf"`` for backward compatibility.
+    importance_cmap : str | Colormap
+        Colormap for the layer x head importance heatmap. Defaults to the
+        IzzyViz purple theme.
+    close_after_save : bool
+        Close figures after saving to reduce memory use.
+
+    Returns
+    -------
+    dict
+        Metric scores, rankings, sliced matrices, figures, axes, and output
+        paths.
+    """
+    if metric_name not in _METRIC_SELECTION_REGISTRY:
+        raise ValueError(
+            f"Unknown metric_name: {metric_name}. "
+            f"Choose from {sorted(_METRIC_SELECTION_REGISTRY)}."
+        )
+
+    metric_params = dict(metric_params or {})
+    overview_kwargs = dict(overview_kwargs or {})
+    detail_kwargs = dict(detail_kwargs or {})
+    detail_file_format = str(detail_file_format).lstrip(".")
+    if not detail_file_format:
+        raise ValueError("detail_file_format must be a non-empty file extension.")
+    run_name = run_name or f"{metric_name}_metric_selection"
+    overview_renderer = overview_renderer.lower()
+    if overview_renderer not in {"fast", "izzyviz"}:
+        raise ValueError("overview_renderer must be 'fast' or 'izzyviz'.")
+
+    attention_array = _attention_layers_heads_to_numpy(attentions, batch_index=0)
+    if attention_array.ndim != 4:
+        raise ValueError(f"Expected attentions to resolve to 4D, got shape {attention_array.shape}")
+
+    num_layers, num_heads, query_len, key_len = attention_array.shape
+    q_slice = _normalize_slice(query_slice, query_len)
+    k_slice = _normalize_slice(key_slice, key_len)
+
+    display_array = attention_array[:, :, q_slice, k_slice]
+    if display_array.ndim != 4:
+        raise ValueError("query_slice and key_slice must keep a 2D matrix for each head.")
+
+    if ignore_first_n > 0:
+        score_array = display_array[:, :, :, ignore_first_n:]
+    else:
+        score_array = display_array
+
+    q_start = q_slice.start if isinstance(q_slice, slice) and q_slice.start is not None else 0
+    k_start = k_slice.start if isinstance(k_slice, slice) and k_slice.start is not None else 0
+    score_key_start = k_start + max(ignore_first_n, 0)
+
+    metric_fn = _METRIC_SELECTION_REGISTRY[metric_name]
+    importance = np.zeros((num_layers, num_heads), dtype=float)
+    for layer in range(num_layers):
+        for head in range(num_heads):
+            params = dict(metric_params)
+            params.setdefault("query_start", q_start)
+            params.setdefault("key_start", score_key_start)
+            importance[layer, head] = metric_fn(score_array[layer, head], **params)
+
+    layer_score = importance.mean(axis=1)
+    head_score = importance.mean(axis=0)
+
+    top_k = min(int(top_k), importance.size)
+    flat_order = np.argsort(importance.reshape(-1))[::-1][:top_k]
+    top_indices = np.dstack(np.unravel_index(flat_order, importance.shape))[0]
+    top_records = [
+        {
+            "rank": rank,
+            "layer": int(layer),
+            "head": int(head),
+            "score": float(importance[layer, head]),
+        }
+        for rank, (layer, head) in enumerate(top_indices, start=1)
+    ]
+
+    if tokens is not None:
+        token_array = np.asarray(tokens, dtype=object)
+        if x_labels is None:
+            x_labels = list(token_array[k_slice])
+        if y_labels is None:
+            y_labels = list(token_array[q_slice])
+
+    output_paths = {}
+    figures = {}
+    axes_map = {}
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _maybe_save(fig, key, filename):
+        if output_dir is None:
+            return
+        path = output_dir / filename
+        fig.savefig(path, bbox_inches="tight")
+        output_paths[key] = str(path)
+        if close_after_save:
+            plt.close(fig)
+
+    overview_highlight_keys = {
+        "highlight_top_cells",
+        "highlight_top_n",
+        "highlight_ranked_only_no_merge",
+        "highlight_ranked_only_merge",
+        "highlight_color",
+        "highlight_edgecolor",
+        "highlight_alpha",
+        "show_merge_token_labels",
+        "merge_token_labels_ranked_only",
+        "merge_token_label_mode",
+        "merge_token_important_label_mode",
+        "merge_token_label_fontsize",
+        "merge_token_highlight_color",
+        "merge_token_highlight_edgecolor",
+        "merge_token_highlight_alpha",
+        "wspace",
+        "hspace",
+    }
+    overview_visual_kwargs = {
+        key: value for key, value in overview_kwargs.items() if key not in overview_highlight_keys
+    }
+
+    overview_common = {
+        "top_n": overview_top_n,
+        "length_threshold": 0,
+        "if_interval": False,
+        "if_top_cells": False,
+        "show_scores_in_enlarged_cells": False,
+        "shared_color_scale": True,
+        "shared_cbar": True,
+    }
+    overview_common.update(overview_visual_kwargs)
+
+    if plot_overview and plot_overview_no_merge:
+        title = f"{run_name}: {metric_name} overview"
+        if overview_renderer == "fast":
+            fig = _save_metric_fast_overview(
+                None,
+                display_array,
+                importance,
+                top_indices,
+                metric_name,
+                ignore_first_n,
+                title=title,
+                figsize=overview_visual_kwargs.get("figsize"),
+                merge_virtual_tokens=False,
+                x_labels=x_labels,
+                y_labels=y_labels,
+                overview_top_n=overview_top_n,
+                cmap=overview_visual_kwargs.get("cmap", THEME_CMAP),
+                highlight_top_cells=overview_kwargs.get("highlight_top_cells", True),
+                highlight_top_n=overview_kwargs.get("highlight_top_n"),
+                highlight_ranked_only=overview_kwargs.get("highlight_ranked_only_no_merge", True),
+                highlight_color=overview_kwargs.get("highlight_color", "#f8bbd0"),
+                highlight_edgecolor=overview_kwargs.get("highlight_edgecolor", "#F06292"),
+                highlight_alpha=overview_kwargs.get("highlight_alpha", 0.35),
+                show_merge_token_labels=overview_kwargs.get("show_merge_token_labels", False),
+                merge_token_labels_ranked_only=overview_kwargs.get("merge_token_labels_ranked_only", False),
+                merge_token_label_mode=overview_kwargs.get("merge_token_label_mode", "index"),
+                merge_token_important_label_mode=overview_kwargs.get("merge_token_important_label_mode"),
+                merge_token_label_fontsize=overview_kwargs.get("merge_token_label_fontsize", 3),
+                merge_token_highlight_color=overview_kwargs.get("merge_token_highlight_color", "#f8bbd0"),
+                merge_token_highlight_edgecolor=overview_kwargs.get("merge_token_highlight_edgecolor", "#F06292"),
+                merge_token_highlight_alpha=overview_kwargs.get("merge_token_highlight_alpha", 0.7),
+                wspace=overview_kwargs.get("wspace", 0.08),
+                hspace=overview_kwargs.get("hspace", 0.12),
+                close_after_save=False,
+            )
+            axes = None
+        else:
+            fig, axes = visualize_attention_overview(
+                display_array,
+                title=title,
+                merge_virtual_tokens=False,
+                close_after_save=False,
+                **overview_common,
+            )
+            _add_metric_overview_annotations(
+                fig,
+                axes,
+                importance,
+                top_indices,
+                metric_name,
+                ignore_first_n,
+            )
+        figures["overview_no_merge"] = fig
+        if axes is not None:
+            axes_map["overview_no_merge"] = axes
+        _maybe_save(fig, "overview_no_merge", "overview_no_merge.png")
+
+    if plot_overview and plot_overview_merge:
+        title = f"{run_name}: {metric_name} overview (merged virtual tokens)"
+        if overview_renderer == "fast":
+            fig = _save_metric_fast_overview(
+                None,
+                display_array,
+                importance,
+                top_indices,
+                metric_name,
+                ignore_first_n,
+                title=title,
+                figsize=overview_visual_kwargs.get("figsize"),
+                merge_virtual_tokens=True,
+                x_labels=x_labels,
+                y_labels=y_labels,
+                overview_top_n=overview_top_n,
+                cmap=overview_visual_kwargs.get("cmap", THEME_CMAP),
+                highlight_top_cells=overview_kwargs.get("highlight_top_cells", True),
+                highlight_top_n=overview_kwargs.get("highlight_top_n"),
+                highlight_ranked_only=overview_kwargs.get("highlight_ranked_only_merge", False),
+                highlight_color=overview_kwargs.get("highlight_color", "#f8bbd0"),
+                highlight_edgecolor=overview_kwargs.get("highlight_edgecolor", "#F06292"),
+                highlight_alpha=overview_kwargs.get("highlight_alpha", 0.35),
+                show_merge_token_labels=overview_kwargs.get("show_merge_token_labels", False),
+                merge_token_labels_ranked_only=overview_kwargs.get("merge_token_labels_ranked_only", False),
+                merge_token_label_mode=overview_kwargs.get("merge_token_label_mode", "index"),
+                merge_token_important_label_mode=overview_kwargs.get("merge_token_important_label_mode"),
+                merge_token_label_fontsize=overview_kwargs.get("merge_token_label_fontsize", 3),
+                merge_token_highlight_color=overview_kwargs.get("merge_token_highlight_color", "#f8bbd0"),
+                merge_token_highlight_edgecolor=overview_kwargs.get("merge_token_highlight_edgecolor", "#F06292"),
+                merge_token_highlight_alpha=overview_kwargs.get("merge_token_highlight_alpha", 0.7),
+                wspace=overview_kwargs.get("wspace", 0.08),
+                hspace=overview_kwargs.get("hspace", 0.12),
+                close_after_save=False,
+            )
+            axes = None
+        else:
+            fig, axes = visualize_attention_overview(
+                display_array,
+                title=title,
+                merge_virtual_tokens=True,
+                close_after_save=False,
+                **overview_common,
+            )
+            _add_metric_overview_annotations(
+                fig,
+                axes,
+                importance,
+                top_indices,
+                metric_name,
+                ignore_first_n,
+            )
+        figures["overview_merge"] = fig
+        if axes is not None:
+            axes_map["overview_merge"] = axes
+        _maybe_save(fig, "overview_merge", "overview_merge_tokens.png")
+
+    if plot_importance_heatmap:
+        fig, ax = plt.subplots(figsize=(max(8, num_heads * 0.7), max(6, num_layers * 0.35)))
+        im = ax.imshow(importance, aspect="auto", cmap=importance_cmap)
+        fig.colorbar(im, ax=ax, label=f"{metric_name} score")
+        ax.set_xlabel("Head")
+        ax.set_ylabel("Layer")
+        ax.set_title(
+            f"Layer x Head Importance: {metric_name}\n"
+            f"Scoring ignores first {ignore_first_n} key column(s)"
+        )
+        ax.set_xticks(np.arange(num_heads))
+        ax.set_xticklabels([f"H{head}" for head in range(num_heads)], rotation=90)
+        ax.set_yticks(np.arange(num_layers))
+        ax.set_yticklabels([f"L{layer}" for layer in range(num_layers)])
+        for record in top_records:
+            ax.text(
+                record["head"],
+                record["layer"],
+                str(record["rank"]),
+                ha="center",
+                va="center",
+                color="white",
+                fontsize=7,
+                fontweight="bold",
+            )
+        fig.tight_layout()
+        figures["importance_heatmap"] = fig
+        axes_map["importance_heatmap"] = ax
+        _maybe_save(fig, "importance_heatmap", "importance_heatmap.png")
+
+    if plot_top_attention_maps:
+        top_attention_count = top_k if top_attention_count is None else int(top_attention_count)
+        detail_paths = []
+        detail_xlabel = detail_kwargs.pop("xlabel", "Tokens Attended To")
+        detail_ylabel = detail_kwargs.pop("ylabel", "Tokens Attending")
+        for record in top_records[:top_attention_count]:
+            layer = record["layer"]
+            head = record["head"]
+            rank = record["rank"]
+            score = record["score"]
+            save_path = None
+            if output_dir is not None:
+                save_path = output_dir / (
+                    f"rank_{rank:02d}_L{layer}_H{head}_attention.{detail_file_format}"
+                )
+            fig_ax = visualize_attention_matrix(
+                display_array[layer, head],
+                x_labels=x_labels,
+                y_labels=y_labels,
+                title=f"{run_name}: rank {rank} L{layer} H{head} ({metric_name}={score:.6f})",
+                xlabel=detail_xlabel,
+                ylabel=detail_ylabel,
+                top_n=detail_top_n,
+                merge_virtual_tokens=detail_merge_virtual_tokens,
+                save_path=str(save_path) if save_path is not None else None,
+                close_after_save=close_after_save,
+                **detail_kwargs,
+            )
+            if save_path is not None:
+                detail_paths.append(str(save_path))
+            else:
+                detail_ax = fig_ax[0] if isinstance(fig_ax, tuple) else fig_ax
+                figures[f"rank_{rank:02d}_attention"] = detail_ax.figure
+                axes_map[f"rank_{rank:02d}_attention"] = detail_ax
+        if detail_paths:
+            output_paths["top_attention_maps"] = detail_paths
+
+    if output_dir is not None and save_summary:
+        summary_path = output_dir / "metric_selection_summary.json"
+        summary = {
+            "run_name": run_name,
+            "metric_name": metric_name,
+            "metric_params": metric_params,
+            "ignore_first_n": int(ignore_first_n),
+            "top_k": int(top_k),
+            "top_records": top_records,
+            "plot_overview": bool(plot_overview),
+            "plot_overview_no_merge": bool(plot_overview_no_merge),
+            "plot_overview_merge": bool(plot_overview_merge),
+            "plot_importance_heatmap": bool(plot_importance_heatmap),
+            "plot_top_attention_maps": bool(plot_top_attention_maps),
+            "overview_renderer": overview_renderer,
+            "importance_cmap": str(importance_cmap),
+        }
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        output_paths["summary"] = str(summary_path)
+
+    return {
+        "metric_name": metric_name,
+        "importance": importance,
+        "layer_score": layer_score,
+        "head_score": head_score,
+        "top_indices": top_indices,
+        "top_records": top_records,
+        "display_array": display_array,
+        "score_array": score_array,
+        "figures": figures,
+        "axes": axes_map,
+        "output_paths": output_paths,
+    }
+
+
+def _minmax_normalize_array(values, eps=1e-12):
+    values = np.asarray(values, dtype=float)
+    finite = np.isfinite(values)
+    normalized = np.zeros_like(values, dtype=float)
+    if not np.any(finite):
+        return normalized
+    vmin = np.nanmin(values[finite])
+    vmax = np.nanmax(values[finite])
+    if vmax - vmin <= eps:
+        return normalized
+    normalized[finite] = (values[finite] - vmin) / (vmax - vmin)
+    return normalized
+
+
+def select_distinctive_attention_heads(
+    target_scores,
+    reference_scores=None,
+    salience_scores=None,
+    top_k=10,
+    normalize=True,
+    combine_method="product",
+    relative_weight=1.0,
+    salience_weight=1.0,
+    output_dir=None,
+    run_name="distinctive_head_selection",
+    plot_heatmaps=True,
+    cmap=THEME_CMAP,
+    close_after_save=True,
+    save_summary=True,
+):
+    """
+    Select heads that are both different from a reference and salient.
+
+    This function supports contrastive selection in the IzzyViz workflow:
+    after an overview reveals that two conditions or models differ, rank the
+    layer/head cells that are worth inspecting next.
+
+    The selection score combines two signals:
+
+    - relative difference: ``abs(target_scores - reference_scores)`` when a
+      reference is provided; otherwise ``target_scores`` itself.
+    - absolute salience: ``salience_scores`` when provided; otherwise
+      ``abs(target_scores)``.
+
+    By default, both signals are min-max normalized and multiplied:
+    ``combined = relative_diff_norm * salience_norm``. This avoids selecting
+    regions that changed a lot but are visually/quantitatively weak, and also
+    avoids selecting strong regions that are not distinctive.
+
+    Parameters
+    ----------
+    target_scores : array-like, shape (num_layers, num_heads)
+        Layer x head score matrix for the target condition/model.
+    reference_scores : array-like, optional
+        Layer x head score matrix for the reference condition/model. If None,
+        ``target_scores`` is treated as the relative signal.
+    salience_scores : array-like, optional
+        Layer x head absolute-importance matrix for the target. If None,
+        ``abs(target_scores)`` is used.
+    top_k : int
+        Number of heads to return.
+    normalize : bool
+        Whether to min-max normalize relative and salience signals before
+        combining them.
+    combine_method : {"product", "weighted_sum"}
+        How to combine normalized relative and salience signals.
+    relative_weight, salience_weight : float
+        Exponents for ``product`` or linear weights for ``weighted_sum``.
+    output_dir : str | Path | None
+        If provided, save heatmaps and a JSON summary.
+    run_name : str
+        Prefix used for saved files and figure titles.
+    plot_heatmaps : bool
+        Whether to draw relative, salience, and combined score heatmaps.
+    cmap : str | Colormap
+        Colormap used for heatmaps.
+    close_after_save : bool
+        Close saved figures to reduce memory use.
+
+    Returns
+    -------
+    dict
+        Contains score matrices, top indices/records, figures, axes, and output
+        paths.
+    """
+    target_scores = np.asarray(target_scores, dtype=float)
+    if target_scores.ndim != 2:
+        raise ValueError(
+            f"target_scores must be a 2D layer x head matrix, got {target_scores.shape}."
+        )
+
+    if reference_scores is None:
+        relative = np.asarray(target_scores, dtype=float)
+    else:
+        reference_scores = np.asarray(reference_scores, dtype=float)
+        if reference_scores.shape != target_scores.shape:
+            raise ValueError(
+                "reference_scores must have the same shape as target_scores: "
+                f"{reference_scores.shape} != {target_scores.shape}."
+            )
+        relative = np.abs(target_scores - reference_scores)
+
+    if salience_scores is None:
+        salience = np.abs(target_scores)
+    else:
+        salience = np.asarray(salience_scores, dtype=float)
+        if salience.shape != target_scores.shape:
+            raise ValueError(
+                "salience_scores must have the same shape as target_scores: "
+                f"{salience.shape} != {target_scores.shape}."
+            )
+
+    if normalize:
+        relative_for_score = _minmax_normalize_array(relative)
+        salience_for_score = _minmax_normalize_array(salience)
+    else:
+        relative_for_score = relative
+        salience_for_score = salience
+
+    combine_method = str(combine_method).lower()
+    if combine_method == "product":
+        combined = (
+            np.power(np.maximum(relative_for_score, 0.0), float(relative_weight))
+            * np.power(np.maximum(salience_for_score, 0.0), float(salience_weight))
+        )
+    elif combine_method == "weighted_sum":
+        combined = (
+            float(relative_weight) * relative_for_score
+            + float(salience_weight) * salience_for_score
+        )
+    else:
+        raise ValueError("combine_method must be 'product' or 'weighted_sum'.")
+
+    num_layers, num_heads = target_scores.shape
+    top_k = min(int(top_k), combined.size)
+    flat_order = np.argsort(combined.reshape(-1))[::-1][:top_k]
+    top_indices = np.dstack(np.unravel_index(flat_order, combined.shape))[0]
+    top_records = [
+        {
+            "rank": rank,
+            "layer": int(layer),
+            "head": int(head),
+            "combined_score": float(combined[layer, head]),
+            "relative_score": float(relative[layer, head]),
+            "relative_score_normalized": float(relative_for_score[layer, head]),
+            "salience_score": float(salience[layer, head]),
+            "salience_score_normalized": float(salience_for_score[layer, head]),
+        }
+        for rank, (layer, head) in enumerate(top_indices, start=1)
+    ]
+
+    output_paths = {}
+    figures = {}
+    axes_map = {}
+    output_dir = Path(output_dir) if output_dir is not None else None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _plot_matrix(matrix, title, filename):
+        fig, ax = plt.subplots(figsize=(max(7, num_heads * 0.55), max(5, num_layers * 0.22)))
+        im = ax.imshow(matrix, aspect="auto", cmap=cmap)
+        ax.set_title(title)
+        ax.set_xlabel("Head")
+        ax.set_ylabel("Layer")
+        ax.set_xticks(np.arange(num_heads))
+        ax.set_yticks(np.arange(num_layers))
+        ax.tick_params(labelsize=7)
+        for record in top_records:
+            layer = record["layer"]
+            head = record["head"]
+            ax.scatter(
+                [head],
+                [layer],
+                s=90,
+                facecolors="none",
+                edgecolors=THEME_NEGATIVE,
+                linewidths=1.6,
+            )
+            ax.text(
+                head,
+                layer,
+                str(record["rank"]),
+                ha="center",
+                va="center",
+                color=THEME_NEGATIVE,
+                fontsize=7,
+                fontweight="bold",
+            )
+        fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
+        fig.tight_layout()
+        if output_dir is not None:
+            path = output_dir / filename
+            fig.savefig(path, dpi=180)
+            output_paths[filename.rsplit(".", 1)[0]] = str(path)
+            if close_after_save:
+                plt.close(fig)
+        else:
+            figures[filename.rsplit(".", 1)[0]] = fig
+            axes_map[filename.rsplit(".", 1)[0]] = ax
+
+    if plot_heatmaps:
+        _plot_matrix(
+            relative_for_score,
+            f"{run_name}: normalized relative difference",
+            "relative_difference_heatmap.png",
+        )
+        _plot_matrix(
+            salience_for_score,
+            f"{run_name}: normalized absolute salience",
+            "absolute_salience_heatmap.png",
+        )
+        _plot_matrix(
+            combined,
+            f"{run_name}: distinctive selection score",
+            "combined_distinctive_score_heatmap.png",
+        )
+
+    if output_dir is not None and save_summary:
+        summary_path = output_dir / "distinctive_head_selection_summary.json"
+        summary = {
+            "run_name": run_name,
+            "top_k": int(top_k),
+            "normalize": bool(normalize),
+            "combine_method": combine_method,
+            "relative_weight": float(relative_weight),
+            "salience_weight": float(salience_weight),
+            "top_records": top_records,
+        }
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        output_paths["summary"] = str(summary_path)
+
+    return {
+        "relative_scores": relative,
+        "salience_scores": salience,
+        "relative_scores_normalized": relative_for_score,
+        "salience_scores_normalized": salience_for_score,
+        "combined_scores": combined,
+        "top_indices": top_indices,
+        "top_records": top_records,
+        "figures": figures,
+        "axes": axes_map,
+        "output_paths": output_paths,
+    }
+
+
+def extract_attention_head_features(
+    attentions,
+    query_slice=None,
+    key_slice=None,
+    metrics=DEFAULT_CLUSTER_METRICS,
+    metric_params=None,
+    ignore_first_n=0,
+    batch_index=0,
+):
+    """
+    Extract per-head feature vectors from raw attention tensors.
+
+    This is the tensor-level counterpart to the features used by
+    ``cluster_attention_heads``. Each head is represented by a vector of
+    interpretable attention metrics, such as entropy, variance, threshold mass,
+    low-range dependency, and long-range dependency.
+
+    Parameters
+    ----------
+    attentions : sequence | array | tensor
+        Attention tensors shaped ``[layers, heads, query, key]`` or a sequence
+        of layer tensors shaped ``[batch, heads, query, key]``.
+    query_slice, key_slice : slice | tuple | index array | None
+        Attention region used for feature extraction.
+    metrics : sequence[str | callable]
+        Built-in metrics or callables. Built-ins match ``cluster_attention_heads``.
+    metric_params : dict | None
+        Per-metric parameters.
+    ignore_first_n : int
+        Number of leading key columns inside ``key_slice`` to ignore for feature
+        computation only.
+    batch_index : int
+        Batch item used when layer tensors include a batch dimension.
+
+    Returns
+    -------
+    dict
+        ``features`` with shape ``[layers, heads, metrics]``,
+        ``feature_names``, ``head_infos``, and sliced ``submatrices``.
+    """
+    metric_params = metric_params or {}
+    attention_array = _attention_layers_heads_to_numpy(attentions, batch_index=batch_index)
+    if attention_array.ndim != 4:
+        raise ValueError(f"Expected attentions to resolve to 4D, got shape {attention_array.shape}.")
+
+    num_layers, num_heads, query_len, key_len = attention_array.shape
+    q_slice = _normalize_slice(query_slice, query_len)
+    k_slice = _normalize_slice(key_slice, key_len)
+    q_start = q_slice.start if isinstance(q_slice, slice) and q_slice.start is not None else 0
+    k_start = k_slice.start if isinstance(k_slice, slice) and k_slice.start is not None else 0
+    score_k_start = k_start + max(int(ignore_first_n), 0)
+
+    metric_names = []
+    metric_functions = []
+    for metric in metrics:
+        if callable(metric):
+            metric_names.append(getattr(metric, "__name__", "custom_metric"))
+            metric_functions.append(metric)
+        else:
+            if metric not in _CLUSTER_METRIC_REGISTRY:
+                raise ValueError(f"Unknown metric: {metric}")
+            metric_names.append(metric)
+            metric_functions.append(_CLUSTER_METRIC_REGISTRY[metric])
+
+    submatrices = attention_array[:, :, q_slice, k_slice].astype(float)
+    features = np.zeros((num_layers, num_heads, len(metric_functions)), dtype=float)
+    head_infos = []
+    for layer_idx in range(num_layers):
+        for head_idx in range(num_heads):
+            sub_display = submatrices[layer_idx, head_idx]
+            if ignore_first_n > 0:
+                sub_score = sub_display[:, int(ignore_first_n):]
+            else:
+                sub_score = sub_display
+            for metric_idx, (metric_name, metric_fn) in enumerate(zip(metric_names, metric_functions)):
+                params = dict(metric_params.get(metric_name, {}))
+                params.setdefault("query_start", q_start)
+                params.setdefault("key_start", score_k_start)
+                features[layer_idx, head_idx, metric_idx] = metric_fn(sub_score, **params)
+            head_infos.append((layer_idx, head_idx))
+
+    return {
+        "features": features,
+        "feature_names": list(metric_names),
+        "head_infos": head_infos,
+        "submatrices": submatrices,
+        "query_slice": q_slice,
+        "key_slice": k_slice,
+        "ignore_first_n": int(ignore_first_n),
+    }
+
+
+def select_distinctive_attention_heads_by_features(
+    target_features,
+    reference_features,
+    salience_features=None,
+    top_k=10,
+    feature_names=None,
+    scale="robust",
+    distance_metric="euclidean",
+    salience_method="norm",
+    output_dir=None,
+    run_name="feature_distinctive_head_selection",
+    plot_heatmaps=True,
+    cmap=THEME_CMAP,
+    close_after_save=True,
+    save_summary=True,
+):
+    """
+    Select distinctive heads by comparing raw per-head feature vectors.
+
+    This function compares the same ``(layer, head)`` across two conditions or
+    models. It is intended for cross-model, RAG-setting, or checkpoint
+    comparison when the prompt and analyzed attention region are aligned.
+
+    The relative signal is a vector distance between target and reference head
+    features. The salience signal is derived from the target head feature vector.
+    Final ranking delegates to ``select_distinctive_attention_heads`` using the
+    same difference x salience logic.
+
+    Parameters
+    ----------
+    target_features, reference_features : array-like
+        Feature tensors with shape ``[layers, heads, features]``.
+    salience_features : array-like | None
+        Optional feature tensor used for salience. Defaults to target features.
+    top_k : int
+        Number of heads to return.
+    feature_names : list[str] | None
+        Names of the feature dimensions, saved in the summary.
+    scale : {"robust", "standard", None, "none"}
+        Scaling applied jointly to target/reference feature vectors before
+        computing distances.
+    distance_metric : {"euclidean", "manhattan", "cosine"}
+        Distance between target and reference vectors for the same head.
+    salience_method : {"norm", "mean_abs", "max_abs"}
+        How to turn the target feature vector into an absolute salience score.
+    output_dir, run_name, plot_heatmaps, cmap, close_after_save
+        Passed to ``select_distinctive_attention_heads``.
+
+    Returns
+    -------
+    dict
+        Feature distances, salience scores, and the underlying selection result.
+    """
+    target_features = np.asarray(target_features, dtype=float)
+    reference_features = np.asarray(reference_features, dtype=float)
+    if target_features.shape != reference_features.shape:
+        raise ValueError(
+            "target_features and reference_features must have the same shape: "
+            f"{target_features.shape} != {reference_features.shape}."
+        )
+    if target_features.ndim != 3:
+        raise ValueError(
+            "target_features must have shape [layers, heads, features], "
+            f"got {target_features.shape}."
+        )
+
+    salience_features = target_features if salience_features is None else np.asarray(salience_features, dtype=float)
+    if salience_features.shape != target_features.shape:
+        raise ValueError(
+            "salience_features must have the same shape as target_features: "
+            f"{salience_features.shape} != {target_features.shape}."
+        )
+
+    num_layers, num_heads, num_features = target_features.shape
+    target_flat = target_features.reshape(-1, num_features)
+    reference_flat = reference_features.reshape(-1, num_features)
+    salience_flat = salience_features.reshape(-1, num_features)
+
+    scale = "none" if scale is None else str(scale).lower()
+    if scale in {"none", "false"}:
+        target_scaled = target_flat.copy()
+        reference_scaled = reference_flat.copy()
+        salience_scaled = salience_flat.copy()
+    else:
+        combined = np.vstack([target_flat, reference_flat, salience_flat])
+        if scale == "robust":
+            combined_scaled = _robust_scale_features(combined)
+        elif scale == "standard":
+            combined_scaled = _standard_scale_features(combined)
+        else:
+            raise ValueError("scale must be 'robust', 'standard', None, or 'none'.")
+        n = target_flat.shape[0]
+        target_scaled = combined_scaled[:n]
+        reference_scaled = combined_scaled[n : 2 * n]
+        salience_scaled = combined_scaled[2 * n :]
+
+    distance_metric = str(distance_metric).lower()
+    diff = target_scaled - reference_scaled
+    if distance_metric == "euclidean":
+        relative_flat = np.sqrt(np.sum(diff * diff, axis=1))
+    elif distance_metric == "manhattan":
+        relative_flat = np.sum(np.abs(diff), axis=1)
+    elif distance_metric == "cosine":
+        numerator = np.sum(target_scaled * reference_scaled, axis=1)
+        denom = (
+            np.linalg.norm(target_scaled, axis=1)
+            * np.linalg.norm(reference_scaled, axis=1)
+        )
+        cosine_similarity = np.divide(numerator, denom, out=np.zeros_like(numerator), where=denom > 1e-12)
+        relative_flat = 1.0 - cosine_similarity
+    else:
+        raise ValueError("distance_metric must be 'euclidean', 'manhattan', or 'cosine'.")
+
+    salience_method = str(salience_method).lower()
+    if salience_method == "norm":
+        salience_flat_scores = np.linalg.norm(salience_scaled, axis=1)
+    elif salience_method == "mean_abs":
+        salience_flat_scores = np.mean(np.abs(salience_scaled), axis=1)
+    elif salience_method == "max_abs":
+        salience_flat_scores = np.max(np.abs(salience_scaled), axis=1)
+    else:
+        raise ValueError("salience_method must be 'norm', 'mean_abs', or 'max_abs'.")
+
+    relative_scores = relative_flat.reshape(num_layers, num_heads)
+    salience_scores = salience_flat_scores.reshape(num_layers, num_heads)
+
+    selection = select_distinctive_attention_heads(
+        target_scores=relative_scores,
+        reference_scores=None,
+        salience_scores=salience_scores,
+        top_k=top_k,
+        normalize=True,
+        combine_method="product",
+        output_dir=output_dir,
+        run_name=run_name,
+        plot_heatmaps=plot_heatmaps,
+        cmap=cmap,
+        close_after_save=close_after_save,
+        save_summary=save_summary,
+    )
+    if output_dir is not None and save_summary:
+        summary_path = Path(output_dir) / "feature_distinctive_head_selection_summary.json"
+        summary = {
+            "run_name": run_name,
+            "feature_names": list(feature_names) if feature_names is not None else None,
+            "scale": scale,
+            "distance_metric": distance_metric,
+            "salience_method": salience_method,
+            "top_records": selection["top_records"],
+        }
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+        selection["output_paths"]["feature_summary"] = str(summary_path)
+
+    return {
+        "relative_scores": relative_scores,
+        "salience_scores": salience_scores,
+        "selection": selection,
+        "top_records": selection["top_records"],
+        "feature_names": list(feature_names) if feature_names is not None else None,
+        "scale": scale,
+        "distance_metric": distance_metric,
+        "salience_method": salience_method,
+        "output_paths": selection["output_paths"],
+    }
+
+
+def _get_distinctive_selection_result(result):
+    if isinstance(result, dict) and "selection" in result:
+        return result["selection"]
+    return result
+
+
+def visualize_distinctive_attention_head_maps(
+    comparison_results,
+    model_order=None,
+    score_key="combined_scores",
+    top_n=8,
+    title="Distinctive Attention Head Selection",
+    output_dir=None,
+    filename="distinctive_attention_head_maps.png",
+    cmap=THEME_CMAP,
+    layout="auto",
+    ncols=2,
+    panel_width=5.4,
+    panel_height=7.2,
+    tick_every=2,
+    close_after_save=True,
+):
+    """
+    Visualize distinctive head selection scores for multiple models/conditions.
+
+    This is a Select-stage visualization for cross-condition analysis. It takes
+    outputs from ``select_distinctive_attention_heads`` or
+    ``select_distinctive_attention_heads_by_features`` and draws one
+    Layer x Head map per model/condition using the IzzyViz purple theme.
+
+    Parameters
+    ----------
+    comparison_results : dict[str, dict]
+        Mapping from model/condition label to a distinctive selection result.
+    model_order : list[str] | None
+        Display order. Defaults to insertion order.
+    score_key : {"combined_scores", "relative_scores_normalized",
+        "salience_scores_normalized", "relative_scores", "salience_scores"}
+        Matrix to visualize from each selection result.
+    top_n : int
+        Number of top-ranked heads to mark in each map.
+    title : str
+        Figure title.
+    output_dir : str | Path | None
+        If provided, save the figure there.
+    filename : str
+        Saved filename when ``output_dir`` is provided.
+    cmap : str | Colormap
+        Colormap. Defaults to the IzzyViz purple theme.
+    layout : {"auto", "grid", "vertical"}
+        Subplot layout. ``"grid"`` is more readable for many models because it
+        gives each Layer x Head map its own y-axis space.
+    ncols : int
+        Number of columns when using grid layout.
+    panel_width, panel_height : float
+        Size of each model panel in inches.
+    tick_every : int
+        Show every nth layer tick to avoid crowded y-axis labels.
+    close_after_save : bool
+        Close saved figures to reduce memory use.
+
+    Returns
+    -------
+    dict
+        Figure, axes, and optional output path.
+    """
+    if not comparison_results:
+        raise ValueError("comparison_results must not be empty.")
+
+    model_order = list(model_order or comparison_results.keys())
+    score_aliases = {
+        "relative_scores_normalized": "relative_scores_normalized",
+        "salience_scores_normalized": "salience_scores_normalized",
+        "relative_normalized": "relative_scores_normalized",
+        "salience_normalized": "salience_scores_normalized",
+    }
+    score_key = score_aliases.get(score_key, score_key)
+
+    matrices = []
+    top_records_by_model = {}
+    for label in model_order:
+        selection = _get_distinctive_selection_result(comparison_results[label])
+        if score_key not in selection:
+            raise ValueError(
+                f"score_key '{score_key}' is not available for {label}. "
+                f"Available keys include: {sorted(k for k in selection if k.endswith('scores') or k.endswith('normalized'))}"
+            )
+        matrices.append(np.asarray(selection[score_key], dtype=float))
+        top_records_by_model[label] = selection.get("top_records", [])[:top_n]
+
+    num_models = len(model_order)
+    num_layers, num_heads = matrices[0].shape
+    for matrix in matrices:
+        if matrix.shape != (num_layers, num_heads):
+            raise ValueError("All score matrices must have the same Layer x Head shape.")
+
+    vmin = min(np.nanmin(matrix) for matrix in matrices)
+    vmax = max(np.nanmax(matrix) for matrix in matrices)
+    if np.isclose(vmin, vmax):
+        vmax = vmin + 1e-9
+
+    layout = str(layout).lower()
+    if layout == "auto":
+        layout = "grid" if num_models > 3 else "vertical"
+    if layout == "grid":
+        ncols = max(1, int(ncols))
+        nrows = int(np.ceil(num_models / ncols))
+        fig, axes = plt.subplots(
+            nrows,
+            ncols,
+            figsize=(panel_width * ncols, panel_height * nrows),
+            squeeze=False,
+        )
+    elif layout == "vertical":
+        nrows, ncols = num_models, 1
+        fig, axes = plt.subplots(
+            nrows,
+            1,
+            figsize=(panel_width, panel_height * nrows),
+            squeeze=False,
+        )
+    else:
+        raise ValueError("layout must be 'auto', 'grid', or 'vertical'.")
+
+    image = None
+    for row_idx, (label, matrix) in enumerate(zip(model_order, matrices)):
+        grid_row = row_idx // ncols
+        grid_col = row_idx % ncols
+        ax = axes[grid_row, grid_col]
+        image = ax.imshow(matrix, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_ylabel("Layer")
+        ax.set_title(label, loc="left", fontsize=10, fontweight="bold", color=THEME_NEGATIVE, pad=4)
+        ax.set_xticks(np.arange(num_heads))
+        y_ticks = np.arange(0, num_layers, max(1, int(tick_every)))
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels([str(value) for value in y_ticks])
+        ax.tick_params(axis="both", labelsize=7, length=2)
+        ax.set_xlabel("Head")
+
+        for record in top_records_by_model[label]:
+            layer = int(record["layer"])
+            head = int(record["head"])
+            rank = int(record["rank"])
+            ax.scatter(
+                [head],
+                [layer],
+                s=115,
+                facecolors="none",
+                edgecolors=THEME_NEGATIVE,
+                linewidths=1.8,
+                zorder=4,
+            )
+            ax.text(
+                head,
+                layer,
+                str(rank),
+                ha="center",
+                va="center",
+                fontsize=7,
+                fontweight="bold",
+                color=THEME_NEGATIVE,
+                zorder=5,
+            )
+
+    for empty_idx in range(num_models, nrows * ncols):
+        axes[empty_idx // ncols, empty_idx % ncols].axis("off")
+
+    fig.suptitle(title, fontsize=15, fontweight="bold", color="black", y=0.995)
+    fig.subplots_adjust(left=0.06, right=0.91, top=0.965, bottom=0.055, wspace=0.24, hspace=0.28)
+    if image is not None:
+        cax = fig.add_axes([0.93, 0.12, 0.018, 0.76])
+        cbar = fig.colorbar(image, cax=cax)
+        cbar.outline.set_visible(False)
+        cbar.set_label(score_key.replace("_", " ").title(), rotation=90)
+
+    output_path = None
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / filename
+        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+        if close_after_save:
+            plt.close(fig)
+
+    return {"figure": fig, "axes": axes, "output_path": str(output_path) if output_path else None}
+
+
+def visualize_representative_head_candidates(
+    representatives_by_model,
+    distinctive_records_by_model=None,
+    model_order=None,
+    title="Representative Head Candidates",
+    output_dir=None,
+    filename="representative_head_candidates.png",
+    max_distinctive_rank=12,
+    close_after_save=True,
+):
+    """
+    Visualize clustering representatives and their overlap with distinctive heads.
+
+    Parameters
+    ----------
+    representatives_by_model : dict[str, list[dict]]
+        Mapping from model/condition label to representative records containing
+        ``layer`` and ``head``. Records may also include ``cluster``.
+    distinctive_records_by_model : dict[str, list[dict]] | None
+        Optional top distinctive records. Representatives that also appear in
+        the top distinctive set are highlighted with the IzzyViz accent color.
+    model_order : list[str] | None
+        Display order. Defaults to insertion order.
+    title : str
+        Figure title.
+    output_dir : str | Path | None
+        If provided, save the figure there.
+    filename : str
+        Saved filename when ``output_dir`` is provided.
+    max_distinctive_rank : int
+        Only top distinctive heads up to this rank are used for overlap.
+    close_after_save : bool
+        Close saved figures to reduce memory use.
+
+    Returns
+    -------
+    dict
+        Figure, axis, table rows, and optional output path.
+    """
+    if not representatives_by_model:
+        raise ValueError("representatives_by_model must not be empty.")
+
+    distinctive_records_by_model = distinctive_records_by_model or {}
+    model_order = list(model_order or representatives_by_model.keys())
+
+    rows = []
+    max_layer = 0
+    for label in model_order:
+        distinctive_set = {
+            (int(record["layer"]), int(record["head"]))
+            for record in distinctive_records_by_model.get(label, [])
+            if int(record.get("rank", max_distinctive_rank + 1)) <= max_distinctive_rank
+        }
+        for record in representatives_by_model.get(label, []):
+            layer = int(record["layer"])
+            head = int(record["head"])
+            max_layer = max(max_layer, layer)
+            rows.append(
+                {
+                    "model_label": label,
+                    "cluster": int(record.get("cluster", -1)),
+                    "layer": layer,
+                    "head": head,
+                    "also_top_distinctive": (layer, head) in distinctive_set,
+                }
+            )
+
+    fig, ax = plt.subplots(figsize=(max(9.0, 0.34 * (max_layer + 1) + 4.0), max(3.5, 0.62 * len(model_order) + 1.8)))
+    for model_idx, label in enumerate(model_order):
+        label_rows = [row for row in rows if row["model_label"] == label]
+        for row in label_rows:
+            color = THEME_NEGATIVE if row["also_top_distinctive"] else THEME_POSITIVE
+            marker = "*" if row["also_top_distinctive"] else "o"
+            size = 170 if row["also_top_distinctive"] else 95
+            ax.scatter(
+                row["layer"],
+                model_idx,
+                s=size,
+                c=color,
+                marker=marker,
+                alpha=0.9,
+                edgecolors="white",
+                linewidths=0.7,
+                zorder=3,
+            )
+            ax.text(
+                row["layer"],
+                model_idx + 0.11,
+                f"H{row['head']}",
+                fontsize=7,
+                ha="center",
+                va="bottom",
+                color="black",
+            )
+
+    ax.set_yticks(np.arange(len(model_order)), model_order)
+    ax.set_xlabel("Layer")
+    ax.set_title(title, fontsize=15, fontweight="bold")
+    ax.grid(axis="x", alpha=0.22, color=THEME_NEGATIVE)
+    ax.set_axisbelow(True)
+    ax.set_xlim(-0.8, max_layer + 0.8)
+    legend_handles = [
+        Line2D([0], [0], marker="o", color="none", markerfacecolor=THEME_POSITIVE, markeredgecolor="white", markersize=9, label="Cluster representative"),
+        Line2D([0], [0], marker="*", color="none", markerfacecolor=THEME_NEGATIVE, markeredgecolor="white", markersize=13, label="Representative and top distinctive"),
+    ]
+    ax.legend(handles=legend_handles, loc="upper right", frameon=False)
+    fig.tight_layout()
+
+    output_path = None
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / filename
+        fig.savefig(output_path, dpi=200, bbox_inches="tight")
+        if close_after_save:
+            plt.close(fig)
+
+    return {
+        "figure": fig,
+        "axis": ax,
+        "rows": rows,
+        "output_path": str(output_path) if output_path else None,
+    }

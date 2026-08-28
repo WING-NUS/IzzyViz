@@ -8,7 +8,7 @@ setup(
     long_description_content_type='text/markdown',
     author='Luo Xizi',
     author_email='e0909010@u.nus.edu',
-    url='https://github.com/lxz333/IzzyViz',  
+    url='https://github.com/zoeyada/IzzyViz',  
     packages=find_packages(),
     install_requires=[
         'matplotlib>=3.0.0',
@@ -16,6 +16,7 @@ setup(
         'torch>=1.0.0',
         'transformers>=4.0.0',
         'pandas>=1.4.0',
+        'scipy>=1.4.0',
         'pybind11>=2.12'  # Add pybind11 if compilation might be needed for compatibility
     ],
     classifiers=[

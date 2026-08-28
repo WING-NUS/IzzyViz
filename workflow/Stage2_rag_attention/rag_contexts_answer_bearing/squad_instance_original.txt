@@ -1,0 +1,41 @@
+SQuAD v1.1 — ORIGINAL INSTANCE (target for the RAG external-context study)
+==============================================================================
+
+PROVENANCE
+------------------------------------------------------------------------------
+Dataset            : SQuAD v1.1 (Stanford Question Answering Dataset)
+Split / file       : training set  (train-v1.1.json)
+Source download    : https://rajpurkar.github.io/SQuAD-explorer/dataset/train-v1.1.json
+Article title      : University_of_Notre_Dame
+Paragraph index    : 23 (within that article's 'paragraphs' list)
+Question id         : 5733926d4776f41900660d8f
+Dataset license    : CC BY-SA 4.0 (SQuAD is distributed under CC BY-SA 4.0;
+                     its passages are derived from English Wikipedia)
+
+QUESTION
+------------------------------------------------------------------------------
+Which institute involving animal life did Cavanaugh create at Notre Dame?
+
+GOLD ANSWER
+------------------------------------------------------------------------------
+text          : Lobund Institute for Animal Studies
+answer_start  : 522  (character offset into the context below)
+verify span   : context[522:557] == 'Lobund Institute for Animal Studies'
+
+CONTEXT (verbatim, as shipped in SQuAD v1.1)
+------------------------------------------------------------------------------
+The Rev. John J. Cavanaugh, C.S.C. served as president from 1946 to 1952. Cavanaugh's legacy at Notre Dame in the post-war years was devoted to raising academic standards and reshaping the university administration to suit it to an enlarged educational mission and an expanded student body and stressing advanced studies and research at a time when Notre Dame quadrupled in student census, undergraduate enrollment increased by more than half, and graduate student enrollment grew fivefold. Cavanaugh also established the Lobund Institute for Animal Studies and Notre Dame's Medieval Institute. Cavanaugh also presided over the construction of the Nieuwland Science Hall, Fisher Hall, and the Morris Inn, as well as the Hall of Liberal Arts (now O'Shaughnessy Hall), made possible by a donation from I.A. O'Shaughnessy, at the time the largest ever made to an American Catholic university. Cavanaugh also established a system of advisory councils at the university, which continue today and are vital to the university's governance and development
+
+OTHER QUESTIONS ON THE SAME PARAGRAPH (for reference)
+------------------------------------------------------------------------------
+- [5733926d4776f41900660d8e] Around the time that Rev. Cavanaugh became president of Notre Dame by how much did the undergrad student body of Notre Dame increase?
+        answer: 'more than half' (start=428)
+- [5733926d4776f41900660d8f] Which institute involving animal life did Cavanaugh create at Notre Dame?
+        answer: 'Lobund Institute for Animal Studies' (start=522) <-- target
+- [5733926d4776f41900660d91] What is O'Shaughnessy Hall of Notre Dame formerly known as?
+        answer: 'Hall of Liberal Arts' (start=720)
+- [5733926d4776f41900660d8d] Which president did Notre Dame have in 1947?
+        answer: 'Rev. John J. Cavanaugh, C.S.C.' (start=4)
+- [5733926d4776f41900660d90] Outside of an institute studying animals, what other institute did Cavanugh create at Notre Dame?
+        answer: 'Medieval Institute' (start=575)
+

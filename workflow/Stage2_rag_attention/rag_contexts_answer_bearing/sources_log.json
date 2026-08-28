@@ -1,0 +1,149 @@
+[
+  {
+    "source": "https://en.wikipedia.org/wiki/Gnotobiosis",
+    "contexts": 8,
+    "with_full_answer": 0,
+    "contains_lobund": 8,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/University_of_Notre_Dame",
+    "contexts": 6,
+    "with_full_answer": 5,
+    "contains_lobund": 5,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Notre_Dame_College_of_Science",
+    "contexts": 6,
+    "with_full_answer": 0,
+    "contains_lobund": 6,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/History_of_the_University_of_Notre_Dame",
+    "contexts": 5,
+    "with_full_answer": 5,
+    "contains_lobund": 5,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/John_J._Cavanaugh",
+    "contexts": 5,
+    "with_full_answer": 5,
+    "contains_lobund": 5,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Research_institute",
+    "contexts": 3,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Animal_testing",
+    "contexts": 3,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Medieval_studies",
+    "contexts": 3,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Volcano",
+    "contexts": 3,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "low"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Honey_bee",
+    "contexts": 3,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "low"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Germ-free_animal",
+    "contexts": 2,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Edward_Sorin",
+    "contexts": 2,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Theodore_Hesburgh",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "high"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Catholic_University_of_America",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Congregation_of_Holy_Cross",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Laboratory_mouse",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Microbiome",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Higher_education_in_the_United_States",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "medium"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Photosynthesis",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "low"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Great_Barrier_Reef",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "low"
+  },
+  {
+    "source": "https://en.wikipedia.org/wiki/Eiffel_Tower",
+    "contexts": 1,
+    "with_full_answer": 0,
+    "contains_lobund": 0,
+    "relatedness": "low"
+  }
+]
